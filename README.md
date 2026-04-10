@@ -1,6 +1,7 @@
-# Ostadi
+# Ostadi (ostadsup)
 
-منصة PWA لإدارة الأفواج: أستاذ (لوحة واحدة)، طالب، منسق — مع **Supabase** (Postgres + Auth + RLS + Storage).
+منصة PWA لإدارة الأفواج: أستاذ (لوحة واحدة)، طالب، منسق — مع **Supabase** (Postgres + Auth + RLS + Storage).  
+*English:* platform for managing relations between teachers and students.
 
 ## المتطلبات
 
