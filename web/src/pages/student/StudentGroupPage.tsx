@@ -3,9 +3,22 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import type { Group, Material, Post, ScheduleEvent } from '../../types'
+import { cohortPageSurfaceStyle, normalizeGroupAccent } from '../../lib/groupTheme'
+import { scheduleEventCreatorLabel } from '../../lib/scheduleConflict'
+import { PeerContactLines } from '../../components/PeerContactLines'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { EmptyState } from '../../components/EmptyState'
+
+type VisiblePeerRow = {
+  user_id: string
+  full_name: string | null
+  role_in_group: string
+  phone: string | null
+  whatsapp: string | null
+  email: string | null
+  student_number: string | null
+}
 
 export function StudentGroupPage() {
   const { id } = useParams<{ id: string }>()
@@ -31,6 +44,17 @@ export function StudentGroupPage() {
   const [workspaceSlug, setWorkspaceSlug] = useState<string | null>(null)
   const [groupTeachers, setGroupTeachers] = useState<{ id: string; full_name: string }[]>([])
   const [selectedTeacherId, setSelectedTeacherId] = useState('')
+  const [visiblePeers, setVisiblePeers] = useState<VisiblePeerRow[]>([])
+  const [selectedCoordId, setSelectedCoordId] = useState('')
+  const [coordMsgKind, setCoordMsgKind] = useState('question')
+  const [coordMsgSubject, setCoordMsgSubject] = useState('')
+  const [coordMsgBody, setCoordMsgBody] = useState('')
+  const [coordBusy, setCoordBusy] = useState(false)
+  const [selectedStudentId, setSelectedStudentId] = useState('')
+  const [studMsgKind, setStudMsgKind] = useState('note')
+  const [studMsgSubject, setStudMsgSubject] = useState('')
+  const [studMsgBody, setStudMsgBody] = useState('')
+  const [studBusy, setStudBusy] = useState(false)
 
   /** من بداية اليوم المحلي حتى نهاية اليوم + 14 يوماً (كان الفلتر يوماً واحداً فقط فيخفي الحصص). */
   const scheduleRange = useMemo(() => {
@@ -57,7 +81,18 @@ export function StudentGroupPage() {
       setLoading(false)
       return
     }
-    setRole(mem.role_in_group)
+    const r = mem.role_in_group as string
+    setRole(r)
+    let peers: VisiblePeerRow[] = []
+    let contactRpcErr: string | null = null
+    if (r === 'student' || r === 'coordinator') {
+      const { data: pr, error: prErr } = await supabase.rpc('list_group_visible_contacts', {
+        p_group_id: id,
+      })
+      if (prErr) contactRpcErr = prErr.message
+      else peers = (pr as VisiblePeerRow[]) ?? []
+    }
+    setVisiblePeers(peers)
     const { data: g, error: gErr } = await supabase.from('groups').select('*').eq('id', id).single()
     if (gErr || !g) {
       setErr('فوج غير موجود')
@@ -125,13 +160,15 @@ export function StudentGroupPage() {
       supabase.from('materials').select('*').eq('group_id', id).order('created_at', { ascending: false }),
       supabase
         .from('schedule_events')
-        .select('*')
+        .select('*, profiles:profiles!schedule_events_created_by_fkey(full_name)')
         .eq('group_id', id)
         .gte('starts_at', scheduleRange.start)
         .lte('starts_at', scheduleRange.end)
         .order('starts_at', { ascending: true }),
     ])
-    setErr(p.error?.message ?? mat.error?.message ?? ev.error?.message ?? null)
+    setErr(
+      contactRpcErr ?? p.error?.message ?? mat.error?.message ?? ev.error?.message ?? null,
+    )
     setPosts((p.data as Post[]) ?? [])
     setMaterials((mat.data as Material[]) ?? [])
     setScheduleEvents((ev.data as ScheduleEvent[]) ?? [])
@@ -141,6 +178,18 @@ export function StudentGroupPage() {
   useEffect(() => {
     void reload()
   }, [id, session?.user?.id])
+
+  useEffect(() => {
+    if (role !== 'student') return
+    const ids = visiblePeers.map((p) => p.user_id)
+    setSelectedCoordId((prev) => (prev && ids.includes(prev) ? prev : ids[0] ?? ''))
+  }, [role, visiblePeers])
+
+  useEffect(() => {
+    if (role !== 'coordinator') return
+    const ids = visiblePeers.map((p) => p.user_id)
+    setSelectedStudentId((prev) => (prev && ids.includes(prev) ? prev : ids[0] ?? ''))
+  }, [role, visiblePeers])
 
   async function downloadMaterial(m: Material) {
     if (!m.file_path) return
@@ -227,11 +276,81 @@ export function StudentGroupPage() {
     nav(`/s/messages/${cid}`)
   }
 
+  async function sendMessageToCoordinator(e: React.FormEvent) {
+    e.preventDefault()
+    if (!id) return
+    if (!selectedCoordId) {
+      setErr('اختر المنسق')
+      return
+    }
+    setCoordBusy(true)
+    setErr(null)
+    const { data, error } = await supabase.rpc('start_conversation_with_coordinator', {
+      p_group_id: id,
+      p_coordinator_id: selectedCoordId,
+      p_message_kind: coordMsgKind,
+      p_subject: coordMsgSubject.trim() || 'بدون عنوان',
+      p_body: coordMsgBody.trim(),
+    })
+    setCoordBusy(false)
+    if (error) {
+      if (error.message.includes('peer_not_coordinator')) {
+        setErr('المختار ليس منسقاً في هذا الفوج.')
+      } else if (error.message.includes('only_students_message_coordinator')) {
+        setErr('مراسلة المنسق متاحة للطلبة فقط.')
+      } else if (error.message.includes('invalid_coordinator')) {
+        setErr('اختيار المنسق غير صالح.')
+      } else {
+        setErr(error.message)
+      }
+      return
+    }
+    const cid = data as string
+    setCoordMsgSubject('')
+    setCoordMsgBody('')
+    nav(`/s/messages/${cid}`)
+  }
+
+  async function sendMessageToStudent(e: React.FormEvent) {
+    e.preventDefault()
+    if (!id) return
+    if (!selectedStudentId) {
+      setErr('اختر الطالب')
+      return
+    }
+    setStudBusy(true)
+    setErr(null)
+    const { data, error } = await supabase.rpc('start_conversation_with_student', {
+      p_group_id: id,
+      p_student_id: selectedStudentId,
+      p_message_kind: studMsgKind,
+      p_subject: studMsgSubject.trim() || 'بدون عنوان',
+      p_body: studMsgBody.trim(),
+    })
+    setStudBusy(false)
+    if (error) {
+      if (error.message.includes('peer_not_student')) {
+        setErr('المختار ليس طالباً نشطاً في هذا الفوج.')
+      } else if (error.message.includes('only_coordinators_message_students')) {
+        setErr('مراسلة الطلبة بهذه الطريقة متاحة للمنسق فقط.')
+      } else if (error.message.includes('invalid_student')) {
+        setErr('اختيار الطالب غير صالح.')
+      } else {
+        setErr(error.message)
+      }
+      return
+    }
+    const cid = data as string
+    setStudMsgSubject('')
+    setStudMsgBody('')
+    nav(`/s/messages/${cid}`)
+  }
+
   if (loading) return <Loading />
   if (!group) return <EmptyState title="غير متاح" />
 
   return (
-    <div className="page">
+    <div className="page page--cohort" style={cohortPageSurfaceStyle(normalizeGroupAccent(group.accent_color))}>
       <p className="breadcrumb">
         <Link to="/s">الرئيسية</Link> / {group.group_name}
       </p>
@@ -247,6 +366,137 @@ export function StudentGroupPage() {
         </p>
       ) : null}
       <ErrorBanner message={err} />
+
+      {role === 'student' ? (
+        <section className="section">
+          <h2>المنسقون</h2>
+          {visiblePeers.length === 0 ? (
+            <p className="muted small">
+              لا يوجد منسق معيّن في هذا الفوج بعد. يمكنك مراسلة الأستاذ من القسم «الأساتذة والتواصل» أدناه.
+            </p>
+          ) : (
+            <>
+              <ul className="student-peer-cards">
+                {visiblePeers.map((c) => (
+                  <li key={c.user_id} className="student-peer-card">
+                    <strong>{c.full_name?.trim() || 'منسق'}</strong>
+                    <PeerContactLines
+                      phone={c.phone}
+                      whatsapp={c.whatsapp}
+                      email={c.email}
+                      showStudentNumber={false}
+                    />
+                  </li>
+                ))}
+              </ul>
+              <h3 className="student-peer-card__msg-title">مراسلة المنسق</h3>
+              <form className="form" onSubmit={(ev) => void sendMessageToCoordinator(ev)}>
+                <label>
+                  المنسق
+                  <select
+                    value={selectedCoordId}
+                    onChange={(e) => setSelectedCoordId(e.target.value)}
+                    required
+                    disabled={visiblePeers.length === 0}
+                  >
+                    {visiblePeers.map((c) => (
+                      <option key={c.user_id} value={c.user_id}>
+                        {c.full_name?.trim() || 'منسق'}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  نوع الرسالة
+                  <select value={coordMsgKind} onChange={(e) => setCoordMsgKind(e.target.value)}>
+                    <option value="question">سؤال</option>
+                    <option value="suggestion">اقتراح</option>
+                    <option value="complaint">شكاية</option>
+                    <option value="research">بحث / طلب</option>
+                  </select>
+                </label>
+                <label>
+                  الموضوع
+                  <input value={coordMsgSubject} onChange={(e) => setCoordMsgSubject(e.target.value)} />
+                </label>
+                <label>
+                  النص
+                  <textarea rows={4} value={coordMsgBody} onChange={(e) => setCoordMsgBody(e.target.value)} required />
+                </label>
+                <button type="submit" className="btn btn--primary" disabled={coordBusy}>
+                  {coordBusy ? 'جاري الإرسال…' : 'إرسال للمنسق'}
+                </button>
+              </form>
+            </>
+          )}
+        </section>
+      ) : null}
+
+      {role === 'coordinator' ? (
+        <section className="section">
+          <h2>الطلبة وبيانات التواصل</h2>
+          <p className="muted small">
+            الهاتف والواتساب والبريد من ملف كل طالب؛ البريد المعروض هو بريد تسجيل الحساب في المنصة.
+          </p>
+          {visiblePeers.length === 0 ? (
+            <p className="muted small">لا يوجد طلبة نشطون في هذا الفوج حالياً.</p>
+          ) : (
+            <>
+              <ul className="student-peer-cards">
+                {visiblePeers.map((s) => (
+                  <li key={s.user_id} className="student-peer-card">
+                    <strong>{s.full_name?.trim() || 'طالب'}</strong>
+                    <PeerContactLines
+                      phone={s.phone}
+                      whatsapp={s.whatsapp}
+                      email={s.email}
+                      studentNumber={s.student_number}
+                    />
+                  </li>
+                ))}
+              </ul>
+              <h3 className="student-peer-card__msg-title">مراسلة طالب</h3>
+              <form className="form" onSubmit={(ev) => void sendMessageToStudent(ev)}>
+                <label>
+                  الطالب
+                  <select
+                    value={selectedStudentId}
+                    onChange={(e) => setSelectedStudentId(e.target.value)}
+                    required
+                    disabled={visiblePeers.length === 0}
+                  >
+                    {visiblePeers.map((s) => (
+                      <option key={s.user_id} value={s.user_id}>
+                        {s.full_name?.trim() || 'طالب'}
+                        {s.student_number?.trim() ? ` — ${s.student_number.trim()}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  نوع الرسالة
+                  <select value={studMsgKind} onChange={(e) => setStudMsgKind(e.target.value)}>
+                    <option value="note">تنبيه / ملاحظة</option>
+                    <option value="question">سؤال</option>
+                    <option value="suggestion">اقتراح</option>
+                  </select>
+                </label>
+                <label>
+                  الموضوع
+                  <input value={studMsgSubject} onChange={(e) => setStudMsgSubject(e.target.value)} />
+                </label>
+                <label>
+                  النص
+                  <textarea rows={4} value={studMsgBody} onChange={(e) => setStudMsgBody(e.target.value)} required />
+                </label>
+                <button type="submit" className="btn btn--primary" disabled={studBusy}>
+                  {studBusy ? 'جاري الإرسال…' : 'إرسال للطالب'}
+                </button>
+              </form>
+            </>
+          )}
+        </section>
+      ) : null}
 
       <section className="section">
         <h2>ما الجديد (الحائط)</h2>
@@ -300,8 +550,9 @@ export function StudentGroupPage() {
           <ul className="schedule-list">
             {scheduleEvents.map((ev) => (
               <li key={ev.id}>
-                <strong>{ev.subject_name ?? 'حصة'}</strong> —{' '}
-                {new Date(ev.starts_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })}
+                <strong>{ev.subject_name ?? 'حصة'}</strong> — {scheduleEventCreatorLabel(ev)} —{' '}
+                {new Date(ev.starts_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })} —{' '}
+                <span className="muted">{ev.mode === 'online' ? 'عن بُعد' : 'حضوري'}</span>
                 {ev.mode === 'online' && ev.meeting_link ? (
                   <>
                     {' '}

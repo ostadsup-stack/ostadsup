@@ -62,6 +62,8 @@ export type TeacherGroupSummaryRow = {
   /** يُرجع من RPC بعد هجرة multi-teacher */
   is_owner?: boolean
   accent_color: string | null
+  /** أول منسق نشط في الفوج (هجرة coordinator_name) */
+  coordinator_name?: string | null
 }
 
 export type GroupMember = {
@@ -72,6 +74,7 @@ export type GroupMember = {
   display_name: string | null
   student_number: string | null
   joined_at: string
+  status?: string
 }
 
 export type Post = {
@@ -123,6 +126,9 @@ export type PublicPostRow = {
 export type ScheduleEvent = {
   id: string
   group_id: string
+  created_at?: string
+  /** منشئ الحصة (للعرض وصلاحيات التعديل) */
+  created_by: string
   event_type: string
   mode: 'on_site' | 'online'
   subject_name: string | null
@@ -132,6 +138,30 @@ export type ScheduleEvent = {
   meeting_link: string | null
   note: string | null
   status?: string
+  /** يُملأ عند select مع join على profiles */
+  profiles?: { full_name: string | null } | null
+}
+
+export type ScheduleSlotRequestRow = {
+  id: string
+  workspace_id: string
+  group_id: string
+  requester_id: string
+  /** يُملأ من الهجرة schedule_slot_request_blocking_creator_notifications */
+  blocking_creator_id?: string | null
+  blocking_event_id: string
+  proposed_event_type: string
+  proposed_mode: 'on_site' | 'online'
+  subject_name: string | null
+  proposed_starts_at: string
+  proposed_ends_at: string
+  location: string | null
+  meeting_link: string | null
+  note: string | null
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled'
+  resolution_event_id: string | null
+  created_at: string
+  resolved_at: string | null
 }
 
 export type Conversation = {
@@ -161,6 +191,7 @@ export type NotificationRow = {
   is_read: boolean
   created_at: string
   target_type: string
+  target_id: string | null
 }
 
 export type TeacherAchievement = {

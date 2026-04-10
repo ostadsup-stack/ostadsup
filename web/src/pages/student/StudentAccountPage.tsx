@@ -95,8 +95,13 @@ export function StudentAccountPage() {
       <p className="breadcrumb">
         <Link to="/s">الرئيسية</Link> / بياناتي
       </p>
-      <PageHeader title="بياناتي" subtitle="تعديل الاسم ووسائل التواصل الظاهرة للأساتذة." />
-      <p className="muted small">البريد مرتبط بحساب الدخول ولا يُعدّل من هنا.</p>
+      <PageHeader
+        title="بياناتي"
+        subtitle="تعديل الاسم والهاتف وواتساب الظاهرة للأستاذ والمنسق ومساعدي الفوج ضمن نفس المساحة."
+      />
+      <p className="muted small">
+        البريد المعروض لهم هو بريد تسجيل الحساب ولا يُعدّل من هنا.
+      </p>
       <ErrorBanner message={err} />
 
       <section className="section teacher-account">

@@ -157,8 +157,8 @@ export function TeacherWeekScheduleGrid({
                             {p.ev.subject_name?.trim() || 'حصة'}
                           </span>
                           <span className="schedule-week__event-meta muted">
-                            {p.ev.groups?.group_name ?? 'فوج'}
-                            {p.ev.mode === 'online' ? ' · عن بُعد' : ''}
+                            {p.ev.profiles?.full_name?.trim() || 'أستاذ'} · {p.ev.groups?.group_name ?? 'فوج'} ·{' '}
+                            {p.ev.mode === 'online' ? 'عن بُعد' : 'حضوري'}
                           </span>
                         </Link>
                       )

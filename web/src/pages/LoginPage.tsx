@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { formatAuthError } from '../lib/authErrors'
 import { isSupabaseConfigured, supabaseSetupMessageAr } from '../lib/supabaseConfig'
 import { ErrorBanner } from '../components/ErrorBanner'
+import loginHero from '../assets/login-hero.png'
 
 export function LoginPage() {
   const nav = useNavigate()
@@ -31,6 +32,16 @@ export function LoginPage() {
 
   return (
     <div className="auth-page">
+      <div className="auth-page__hero">
+        <img
+          src={loginHero}
+          width={560}
+          height={700}
+          decoding="async"
+          alt=""
+          className="auth-page__hero-img"
+        />
+      </div>
       <div className="auth-card">
         <h1>تسجيل الدخول</h1>
         {!isSupabaseConfigured() ? (

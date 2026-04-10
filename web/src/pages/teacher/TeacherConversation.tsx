@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { fetchWorkspaceForTeacher } from '../../lib/workspace'
+import { cohortPageSurfaceStyle, normalizeGroupAccent } from '../../lib/groupTheme'
 import type { Conversation, Message, Profile } from '../../types'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
@@ -19,6 +20,7 @@ export function TeacherConversation() {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [coordinatorIds, setCoordinatorIds] = useState<Set<string>>(new Set())
+  const [cohortSurface, setCohortSurface] = useState<CSSProperties | null>(null)
 
   async function reload() {
     if (!id || !session?.user?.id) {
@@ -44,6 +46,20 @@ export function TeacherConversation() {
     }
     const convRow = c as Conversation
     setConv(convRow)
+    if (convRow.group_id) {
+      const { data: gRow } = await supabase
+        .from('groups')
+        .select('accent_color')
+        .eq('id', convRow.group_id)
+        .maybeSingle()
+      setCohortSurface(
+        cohortPageSurfaceStyle(
+          normalizeGroupAccent((gRow as { accent_color: string | null } | null)?.accent_color),
+        ),
+      )
+    } else {
+      setCohortSurface(null)
+    }
     const { data: msgs, error: mErr } = await supabase
       .from('messages')
       .select('*')
@@ -106,7 +122,7 @@ export function TeacherConversation() {
   if (!conv) return <EmptyState title="غير موجود" />
 
   return (
-    <div className="page">
+    <div className={cohortSurface ? 'page page--cohort' : 'page'} style={cohortSurface ?? undefined}>
       <p className="breadcrumb">
         <Link to="/t/inbox">الرسائل</Link> / {conv.subject ?? 'محادثة'}
       </p>

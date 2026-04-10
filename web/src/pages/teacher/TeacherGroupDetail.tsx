@@ -1,18 +1,33 @@
-import { useEffect, useState } from 'react'
-import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { fetchWorkspaceForTeacher } from '../../lib/workspace'
 import { shareWhatsAppMessage } from '../../lib/workspace'
-import { pickContrastingForeground } from '../../lib/colorContrast'
+import { cohortPageSurfaceStyle, DEFAULT_GROUP_ACCENT, normalizeGroupAccent } from '../../lib/groupTheme'
+import { whatsappHref } from '../../lib/whatsapp'
 import { nextEndAfterStartChange, scheduleFieldsFromIso } from '../../lib/scheduleFormTimes'
+import {
+  findOverlappingScheduleEvents,
+  isPostgresExclusionViolation,
+  scheduleEventCreatorLabel,
+  scheduleExclusionUserMessage,
+} from '../../lib/scheduleConflict'
 import type { Group, GroupMember, Material, Post, ScheduleEvent, StudyLevel } from '../../types'
 import { buildSuggestedCohortCode } from '../../lib/cohortCode'
+import { studyLevelLabelAr } from '../../lib/teacherGroups'
+import { addDays, sameLocalDay, startOfMonday } from '../../lib/teacherWeekSchedule'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { EmptyState } from '../../components/EmptyState'
 
-const DEFAULT_GROUP_ACCENT = '#2563eb'
+type MemberContactInfo = {
+  phone: string | null
+  whatsapp: string | null
+  email: string
+  student_number: string | null
+  full_name: string | null
+}
 
 const emptySchedForm = {
   event_type: 'class' as 'class' | 'seminar',
@@ -29,6 +44,7 @@ const emptySchedForm = {
 export function TeacherGroupDetail() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { session } = useAuth()
   const [err, setErr] = useState<string | null>(null)
@@ -45,6 +61,7 @@ export function TeacherGroupDetail() {
   const [materials, setMaterials] = useState<Material[]>([])
   const [events, setEvents] = useState<ScheduleEvent[]>([])
   const [members, setMembers] = useState<GroupMember[]>([])
+  const [memberContacts, setMemberContacts] = useState<Record<string, MemberContactInfo>>({})
   const [loading, setLoading] = useState(true)
   const [metaSaving, setMetaSaving] = useState(false)
   const [metaSuggesting, setMetaSuggesting] = useState(false)
@@ -69,6 +86,87 @@ export function TeacherGroupDetail() {
   const [editSched, setEditSched] = useState<typeof emptySchedForm | null>(null)
   const [highlightEventId, setHighlightEventId] = useState<string | null>(null)
   const [scheduleEditSaving, setScheduleEditSaving] = useState(false)
+  const [scheduleConflictBlocker, setScheduleConflictBlocker] = useState<ScheduleEvent | null>(null)
+  const [editScheduleConflictBlocker, setEditScheduleConflictBlocker] = useState<ScheduleEvent | null>(null)
+  const [slotRequestSending, setSlotRequestSending] = useState(false)
+  const [archiveBusy, setArchiveBusy] = useState(false)
+  const [revokeBusy, setRevokeBusy] = useState(false)
+  const [schedulePanelOpen, setSchedulePanelOpen] = useState(false)
+  const [memberBusyId, setMemberBusyId] = useState<string | null>(null)
+
+  const cohortAccentHex = useMemo(() => {
+    if (!group) return DEFAULT_GROUP_ACCENT
+    if (isGroupOwner) {
+      const t = metaForm.accent_color.trim()
+      if (/^#[0-9A-Fa-f]{6}$/.test(t)) return normalizeGroupAccent(t)
+    }
+    return normalizeGroupAccent(group.accent_color)
+  }, [group, isGroupOwner, metaForm.accent_color])
+
+  const activeScheduleEvents = useMemo(
+    () => events.filter((ev) => ev.status !== 'cancelled'),
+    [events],
+  )
+
+  const scheduleBuckets = useMemo(() => {
+    const now = new Date()
+    const todayRef = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const mondayThis = startOfMonday(now)
+    const sundayThisEnd = addDays(mondayThis, 6)
+    sundayThisEnd.setHours(23, 59, 59, 999)
+    const nextMonday = addDays(mondayThis, 7)
+    const nextSundayEnd = addDays(nextMonday, 6)
+    nextSundayEnd.setHours(23, 59, 59, 999)
+
+    const startOf = (ev: ScheduleEvent) => new Date(ev.starts_at)
+    const sortByStart = (a: ScheduleEvent, b: ScheduleEvent) =>
+      new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+
+    const today = activeScheduleEvents
+      .filter((ev) => sameLocalDay(startOf(ev), todayRef))
+      .sort(sortByStart)
+
+    const thisWeek = activeScheduleEvents
+      .filter((ev) => {
+        const t = startOf(ev)
+        if (sameLocalDay(t, todayRef)) return false
+        return t >= mondayThis && t <= sundayThisEnd
+      })
+      .sort(sortByStart)
+
+    const nextWeek = activeScheduleEvents
+      .filter((ev) => {
+        const t = startOf(ev)
+        return t >= nextMonday && t <= nextSundayEnd
+      })
+      .sort(sortByStart)
+
+    return { today, thisWeek, nextWeek }
+  }, [activeScheduleEvents])
+
+  const activeMembers = useMemo(
+    () => members.filter((m) => (m.status ?? 'active') === 'active'),
+    [members],
+  )
+
+  const studentMembers = useMemo(
+    () => activeMembers.filter((m) => m.role_in_group === 'student'),
+    [activeMembers],
+  )
+
+  const coordinatorMembers = useMemo(
+    () => activeMembers.filter((m) => m.role_in_group === 'coordinator'),
+    [activeMembers],
+  )
+
+  const headerCoordinatorLabel = useMemo(() => {
+    const names = coordinatorMembers
+      .map((c) => (c.display_name ?? '').trim())
+      .filter(Boolean)
+    return names.length ? names.join('، ') : '—'
+  }, [coordinatorMembers])
+
+  const studentCount = studentMembers.length
 
   useEffect(() => {
     if (!joinUrlStudent) {
@@ -92,6 +190,7 @@ export function TeacherGroupDetail() {
 
   useEffect(() => {
     if (location.hash !== '#group-schedule' || loading) return
+    setSchedulePanelOpen(true)
     const el = document.getElementById('group-schedule')
     if (!el) return
     requestAnimationFrame(() => {
@@ -108,6 +207,8 @@ export function TeacherGroupDetail() {
     setIsLinkedStaff(false)
     setEditingEventId(null)
     setEditSched(null)
+    setScheduleConflictBlocker(null)
+    setEditScheduleConflictBlocker(null)
     const { workspace: myWs, error: wErr } = await fetchWorkspaceForTeacher(session.user.id)
     if (wErr || !myWs) {
       setErr(wErr?.message ?? 'مساحة غير موجودة')
@@ -177,16 +278,41 @@ export function TeacherGroupDetail() {
         .order('created_at', { ascending: false }),
       supabase
         .from('schedule_events')
-        .select('*')
+        .select('*, profiles:profiles!schedule_events_created_by_fkey(full_name)')
         .eq('group_id', id)
         .order('starts_at', { ascending: true }),
       supabase.from('group_members').select('*').eq('group_id', id),
     ])
-    setErr(p.error?.message ?? m.error?.message ?? e.error?.message ?? mem.error?.message ?? null)
+    const batchErr = p.error?.message ?? m.error?.message ?? e.error?.message ?? mem.error?.message ?? null
     setPosts((p.data as Post[]) ?? [])
     setMaterials((m.data as Material[]) ?? [])
     setEvents((e.data as ScheduleEvent[]) ?? [])
     setMembers((mem.data as GroupMember[]) ?? [])
+
+    const contactMap: Record<string, MemberContactInfo> = {}
+    const { data: crew, error: crewErr } = await supabase.rpc('list_group_member_contacts_for_staff', {
+      p_group_id: id,
+    })
+    if (!crewErr && crew) {
+      for (const row of crew as {
+        user_id: string
+        full_name: string | null
+        phone: string | null
+        whatsapp: string | null
+        email: string | null
+        student_number: string | null
+      }[]) {
+        contactMap[row.user_id] = {
+          full_name: row.full_name,
+          phone: row.phone,
+          whatsapp: row.whatsapp,
+          email: row.email ?? '',
+          student_number: row.student_number,
+        }
+      }
+    }
+    setMemberContacts(contactMap)
+    setErr(batchErr ?? crewErr?.message ?? null)
     setLoading(false)
   }
 
@@ -334,7 +460,23 @@ export function TeacherGroupDetail() {
       setErr('وقت النهاية يجب أن يكون بعد وقت البداية في نفس اليوم')
       return
     }
+    setScheduleConflictBlocker(null)
     setErr(null)
+    const overlaps = findOverlappingScheduleEvents(events, starts, ends)
+    const myId = session.user.id
+    const selfBlocks = overlaps.filter((ev) => ev.created_by === myId)
+    const otherBlock = overlaps.find((ev) => ev.created_by !== myId)
+    if (selfBlocks.length > 0) {
+      setErr('لديك حصة أو ندوة أخرى لهذا الفوج في هذا الوقت. غيّر الوقت أو عدّل الموعد القائم.')
+      return
+    }
+    if (otherBlock) {
+      setErr(
+        `يوجد ${otherBlock.event_type === 'seminar' ? 'ندوة' : 'حصة'} لـ ${scheduleEventCreatorLabel(otherBlock)} في هذا الوقت. غيّر الوقت أو أرسل طلباً لصاحب الحصة.`,
+      )
+      setScheduleConflictBlocker(otherBlock)
+      return
+    }
     const { error } = await supabase.from('schedule_events').insert({
       workspace_id: groupOwnerWorkspaceId,
       group_id: id,
@@ -349,14 +491,88 @@ export function TeacherGroupDetail() {
       note: sched.note.trim() || null,
     })
     if (error) {
-      setErr(error.message)
+      if (isPostgresExclusionViolation(error)) setErr(scheduleExclusionUserMessage())
+      else setErr(error.message)
       return
     }
     setSched({ ...emptySchedForm })
     await reload()
   }
 
+  async function submitScheduleSlotRequest(kind: 'new' | 'edit') {
+    if (!groupOwnerWorkspaceId || !session?.user?.id || !id) return
+    const blocker = kind === 'new' ? scheduleConflictBlocker : editScheduleConflictBlocker
+    const form = kind === 'new' ? sched : editSched
+    if (!blocker || !form) return
+    if (!form.schedule_date || !form.start_time || !form.end_time) {
+      setErr('حدد اليوم ووقت البداية والنهاية قبل إرسال الطلب')
+      return
+    }
+    const starts = new Date(`${form.schedule_date}T${form.start_time}:00`)
+    const ends = new Date(`${form.schedule_date}T${form.end_time}:00`)
+    if (!(ends.getTime() > starts.getTime())) {
+      setErr('وقت النهاية يجب أن يكون بعد وقت البداية في نفس اليوم')
+      return
+    }
+    setSlotRequestSending(true)
+    setErr(null)
+    const { data: insertedReq, error } = await supabase
+      .from('schedule_slot_requests')
+      .insert({
+        workspace_id: groupOwnerWorkspaceId,
+        group_id: id,
+        requester_id: session.user.id,
+        blocking_event_id: blocker.id,
+        proposed_event_type: form.event_type,
+        proposed_mode: form.mode,
+        subject_name: form.subject_name.trim() || null,
+        proposed_starts_at: starts.toISOString(),
+        proposed_ends_at: ends.toISOString(),
+        location: form.location.trim() || null,
+        meeting_link: form.meeting_link.trim() || null,
+        note: form.note.trim() || null,
+      })
+      .select('id')
+      .maybeSingle()
+    setSlotRequestSending(false)
+    if (error) {
+      if (error.code === '23505') {
+        setErr('لديك بالفعل طلباً معلّقاً لهذه الحصة. راجع «طلبات الحصص» أو انتظر الرد.')
+      } else {
+        setErr(error.message)
+      }
+      return
+    }
+    let notifyFallback: string | null = null
+    if (insertedReq?.id) {
+      const { error: notifyErr } = await supabase.rpc('ensure_schedule_slot_request_notification', {
+        p_request_id: insertedReq.id,
+      })
+      if (
+        notifyErr &&
+        !/function .* does not exist|schema cache/i.test(notifyErr.message) &&
+        !/blocking_creator_id|column .* does not exist/i.test(notifyErr.message)
+      ) {
+        notifyFallback =
+          'تم حفظ الطلب. إن لم يظهر تنبيه لزميلك، اطلب منه فتح «طلبات الحصص» أو حدّث الصفحة.'
+      }
+    }
+    if (kind === 'new') {
+      setScheduleConflictBlocker(null)
+      setErr(notifyFallback ?? 'تم إرسال الطلب. ستصل إشعاراً لصاحب الحصة.')
+    } else {
+      setEditScheduleConflictBlocker(null)
+      setErr(notifyFallback ?? 'تم إرسال الطلب. ستصل إشعاراً لصاحب الحصة.')
+    }
+  }
+
   const canManageSchedule = isGroupOwner || isLinkedStaff
+
+  function canMutateScheduleEvent(ev: ScheduleEvent): boolean {
+    const uid = session?.user?.id
+    if (!uid) return false
+    return isGroupOwner || ev.created_by === uid
+  }
 
   useEffect(() => {
     if (loading || events.length === 0) return
@@ -393,6 +609,7 @@ export function TeacherGroupDetail() {
   }, [loading, events, searchParams, setSearchParams])
 
   function startEditSchedule(ev: ScheduleEvent) {
+    setEditScheduleConflictBlocker(null)
     const { schedule_date, start_time, end_time } = scheduleFieldsFromIso(ev.starts_at, ev.ends_at)
     setEditingEventId(ev.id)
     setEditSched({
@@ -411,6 +628,7 @@ export function TeacherGroupDetail() {
   function cancelEditSchedule() {
     setEditingEventId(null)
     setEditSched(null)
+    setEditScheduleConflictBlocker(null)
   }
 
   async function saveEditSchedule(e: React.FormEvent) {
@@ -424,6 +642,23 @@ export function TeacherGroupDetail() {
     const ends = new Date(`${editSched.schedule_date}T${editSched.end_time}:00`)
     if (!(ends.getTime() > starts.getTime())) {
       setErr('وقت النهاية يجب أن يكون بعد وقت البداية في نفس اليوم')
+      return
+    }
+    setEditScheduleConflictBlocker(null)
+    const overlaps = findOverlappingScheduleEvents(events, starts, ends, editingEventId)
+    const myId = session?.user?.id
+    if (!myId) return
+    const selfBlocks = overlaps.filter((ev) => ev.created_by === myId)
+    const otherBlock = overlaps.find((ev) => ev.created_by !== myId)
+    if (selfBlocks.length > 0) {
+      setErr('لديك حصة أو ندوة أخرى لهذا الفوج في هذا الوقت. اختر وقتاً لا يتعارض مع مواعيدك.')
+      return
+    }
+    if (otherBlock) {
+      setErr(
+        `يوجد ${otherBlock.event_type === 'seminar' ? 'ندوة' : 'حصة'} لـ ${scheduleEventCreatorLabel(otherBlock)} في هذا الوقت. غيّر الوقت أو أرسل طلباً لصاحب الحصة.`,
+      )
+      setEditScheduleConflictBlocker(otherBlock)
       return
     }
     setScheduleEditSaving(true)
@@ -443,7 +678,8 @@ export function TeacherGroupDetail() {
       .eq('id', editingEventId)
     setScheduleEditSaving(false)
     if (error) {
-      setErr(error.message)
+      if (isPostgresExclusionViolation(error)) setErr(scheduleExclusionUserMessage())
+      else setErr(error.message)
       return
     }
     cancelEditSchedule()
@@ -455,7 +691,9 @@ export function TeacherGroupDetail() {
     setErr(null)
     const { error } = await supabase.from('schedule_events').delete().eq('id', evId)
     if (error) {
-      setErr(error.message)
+      if (error.code === '42501' || /permission|policy|rls/i.test(error.message))
+        setErr('لا يمكنك حذف حصة أستاذ آخر. يمكن لمالك المساحة حذفها إن لزم.')
+      else setErr(error.message)
       return
     }
     if (editingEventId === evId) cancelEditSchedule()
@@ -474,6 +712,51 @@ export function TeacherGroupDetail() {
     else await reload()
   }
 
+  function memberDisplayName(m: GroupMember) {
+    const c = memberContacts[m.user_id]
+    const fn = (c?.full_name ?? '').trim()
+    if (fn) return fn
+    const dn = (m.display_name ?? '').trim()
+    if (dn) return dn
+    return m.user_id
+  }
+
+  function memberPrimaryContactHref(userId: string): string | null {
+    const c = memberContacts[userId]
+    if (!c) return null
+    const em = c.email?.trim()
+    if (em) return `mailto:${em}`
+    const wa = whatsappHref(c.whatsapp ?? '')
+    if (wa) return wa
+    const tel = c.phone?.trim()
+    if (tel) return `tel:${tel.replace(/\s/g, '')}`
+    return null
+  }
+
+  async function blockMember(m: GroupMember) {
+    if (!id || !canManageSchedule) return
+    const label = memberDisplayName(m)
+    if (!window.confirm(`حجب «${label}» من هذا الفوج؟ لن يظهر في قائمة الطلبة النشطة.`)) return
+    setMemberBusyId(m.id)
+    setErr(null)
+    const { error } = await supabase.from('group_members').update({ status: 'blocked' }).eq('id', m.id)
+    setMemberBusyId(null)
+    if (error) setErr(error.message)
+    else await reload()
+  }
+
+  async function removeMember(m: GroupMember) {
+    if (!id || !canManageSchedule) return
+    const label = memberDisplayName(m)
+    if (!window.confirm(`حذف «${label}» من عضوية الفوج نهائياً؟ لا يمكن التراجع من هنا.`)) return
+    setMemberBusyId(m.id)
+    setErr(null)
+    const { error } = await supabase.from('group_members').delete().eq('id', m.id)
+    setMemberBusyId(null)
+    if (error) setErr(error.message)
+    else await reload()
+  }
+
   async function rotateTeacherLink() {
     if (!id || !isGroupOwner) return
     setRotatingLink(true)
@@ -484,264 +767,361 @@ export function TeacherGroupDetail() {
     else if (typeof data === 'string') setTeacherLinkSecret(data)
   }
 
+  function scheduleEventSummaryLine(ev: ScheduleEvent) {
+    const kind = ev.event_type === 'seminar' ? 'ندوة' : 'حصة'
+    const title = ev.subject_name ?? kind
+    return `${new Date(ev.starts_at).toLocaleString('ar-MA')} → ${new Date(ev.ends_at).toLocaleString('ar-MA')} — ${title} — ${scheduleEventCreatorLabel(ev)} (${ev.mode === 'online' ? 'عن بُعد' : 'حضوري'})${ev.location ? ` — ${ev.location}` : ''}`
+  }
+
+  async function handleArchiveGroup() {
+    if (!id) return
+    if (
+      !window.confirm(
+        'أرشفة هذا الفوج؟ سيختفي من قوائم الأفواج النشطة ولن يُعاد تنشيطه من هذه الواجهة.',
+      )
+    )
+      return
+    setArchiveBusy(true)
+    setErr(null)
+    const { data, error } = await supabase.rpc('archive_group_by_owner', { p_group_id: id })
+    setArchiveBusy(false)
+    if (error) {
+      setErr(error.message)
+      return
+    }
+    const row = data as { ok?: boolean; error?: string } | null
+    if (!row?.ok) {
+      const code = row?.error
+      const msg =
+        code === 'forbidden'
+          ? 'غير مصرح.'
+          : code === 'not_found'
+            ? 'الفوج غير موجود.'
+            : code === 'not_authenticated'
+              ? 'يجب تسجيل الدخول.'
+              : 'تعذرت الأرشفة.'
+      setErr(msg)
+      return
+    }
+    navigate('/t/groups')
+  }
+
+  async function handleRevokeSelf() {
+    if (!id) return
+    if (!window.confirm('الانسحاب من هذا الفوج كأستاذ مرتبط؟ لن يبقى لك وصول بعد التأكيد.')) return
+    setRevokeBusy(true)
+    setErr(null)
+    const { data, error } = await supabase.rpc('revoke_own_group_staff', { p_group_id: id })
+    setRevokeBusy(false)
+    if (error) {
+      setErr(error.message)
+      return
+    }
+    const row = data as { ok?: boolean; error?: string } | null
+    if (!row?.ok) {
+      const code = row?.error
+      const msg =
+        code === 'owner_use_archive'
+          ? 'مالك الفوج يستخدم «أرشفة الفوج» بدلاً من الانسحاب.'
+          : code === 'not_linked'
+            ? 'أنت غير مرتبط بهذا الفوج.'
+            : code === 'not_authenticated'
+              ? 'يجب تسجيل الدخول.'
+              : 'تعذر الانسحاب.'
+      setErr(msg)
+      return
+    }
+    navigate('/t/groups')
+  }
+
   function shareScheduleWhatsapp() {
     if (!group) return
     const lines = events
       .slice(0, 12)
       .map((ev) => {
         const kind = ev.event_type === 'seminar' ? 'ندوة' : 'حصة'
-        return `${new Date(ev.starts_at).toLocaleString('ar-MA')} — ${ev.subject_name ?? kind} (${kind}، ${ev.mode === 'online' ? 'عن بُعد' : 'حضوري'})`
+        return `${new Date(ev.starts_at).toLocaleString('ar-MA')} — ${ev.subject_name ?? kind} — ${scheduleEventCreatorLabel(ev)} (${kind}، ${ev.mode === 'online' ? 'عن بُعد' : 'حضوري'})`
       })
     const link = joinUrlStudent || `${typeof window !== 'undefined' ? window.location.origin : ''}/s/join?code=${group.join_code}`
     const text = `جدول ${group.group_name}:\n${lines.join('\n')}\n\nرابط المنصة: ${link}`
     shareWhatsAppMessage(text)
   }
 
+  function renderRosterRow(m: GroupMember, kind: 'coord' | 'student') {
+    const c = memberContacts[m.user_id]
+    const sn = c?.student_number ?? m.student_number ?? null
+    const email = (c?.email ?? '').trim()
+    const wa = (c?.whatsapp ?? '').trim()
+    const href = memberPrimaryContactHref(m.user_id)
+    const busy = memberBusyId === m.id
+
+    return (
+      <div
+        key={m.id}
+        className={`cohort-roster-row${kind === 'coord' ? ' cohort-roster-row--coord' : ''}`}
+      >
+        <div className="cohort-roster__cell cohort-roster__cell--action">
+          {kind === 'coord' ? (
+            <button
+              type="button"
+              className="btn btn--ghost btn--small"
+              disabled={busy || !canManageSchedule}
+              onClick={() => void promote(m, 'student')}
+            >
+              إلغاء المنسق
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn--ghost btn--small"
+              disabled={busy || !canManageSchedule}
+              onClick={() => void promote(m, 'coordinator')}
+            >
+              جعله منسقاً
+            </button>
+          )}
+        </div>
+        <div className="cohort-roster__cell cohort-roster__cell--name" title={memberDisplayName(m)}>
+          {memberDisplayName(m)}
+        </div>
+        <div className="cohort-roster__cell cohort-roster__cell--num" dir="ltr">
+          {sn?.trim() ? sn : '—'}
+        </div>
+        <div className="cohort-roster__cell cohort-roster__cell--email" dir="ltr">
+          {email || '—'}
+        </div>
+        <div className="cohort-roster__cell cohort-roster__cell--wa" dir="ltr">
+          {kind === 'coord' ? (wa || '—') : '—'}
+        </div>
+        <div className="cohort-roster__cell cohort-roster__cell--btn">
+          {href ? (
+            <a href={href} className="btn btn--small btn--secondary" rel="noreferrer">
+              تواصل
+            </a>
+          ) : (
+            <button type="button" className="btn btn--small btn--ghost" disabled>
+              تواصل
+            </button>
+          )}
+        </div>
+        <div className="cohort-roster__cell cohort-roster__cell--btn">
+          <button
+            type="button"
+            className="btn btn--small btn--ghost"
+            disabled={busy || !canManageSchedule}
+            onClick={() => void blockMember(m)}
+          >
+            حجب
+          </button>
+        </div>
+        <div className="cohort-roster__cell cohort-roster__cell--btn">
+          <button
+            type="button"
+            className="btn btn--small btn--ghost"
+            disabled={busy || !canManageSchedule}
+            onClick={() => void removeMember(m)}
+          >
+            حذف
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (loading || !group) {
     return loading ? <Loading /> : <EmptyState title="فوج غير موجود" />
   }
 
-  const scheduleFormAccent =
-    metaForm.accent_color.trim() && /^#[0-9A-Fa-f]{6}$/.test(metaForm.accent_color.trim())
-      ? metaForm.accent_color.trim()
-      : DEFAULT_GROUP_ACCENT
-  const scheduleFormFg = pickContrastingForeground(scheduleFormAccent)
-
   return (
-    <div className="page">
-      <p className="breadcrumb">
-        <Link to="/t/groups">الأفواج</Link> / {group.group_name}
-      </p>
-      <h1>{group.group_name}</h1>
+    <div className="page page--cohort" style={cohortPageSurfaceStyle(cohortAccentHex)}>
+      <nav className="cohort-detail-nav" aria-label="تنقل الصفحة">
+        <p className="breadcrumb">
+          <Link to="/t">الرئيسية</Link>
+          {' · '}
+          <Link to="/t/groups">الأفواج</Link>
+          {' / '}
+          <span>{group.group_name}</span>
+        </p>
+      </nav>
       <ErrorBanner message={err} />
 
-      {isGroupOwner ? (
-      <section className="section">
-        <h2>بيانات الفوج الرسمية</h2>
-        <p className="muted small">
-          المستوى والرمز الرسمي (مثل الرمز الذي يعطيه منسق الفوج) يربط المحتوى والجدول بهذا الفوج دون
-          الخلط مع أفواج أخرى.
-        </p>
-        <form className="form form--grid" onSubmit={saveGroupMeta}>
-          <label className="teacher-groups__color-field">
-            لون الفوج (في قائمة الأفواج)
-            <input
-              type="color"
-              value={metaForm.accent_color}
-              onChange={(e) => setMetaForm({ ...metaForm, accent_color: e.target.value })}
-              aria-label="لون تمييز الفوج"
-            />
-          </label>
-          <label>
-            المستوى الدراسي
-            <select
-              value={metaForm.study_level}
-              onChange={(e) => setMetaForm({ ...metaForm, study_level: e.target.value as StudyLevel })}
-            >
-              <option value="licence">إجازة</option>
-              <option value="master">ماستر</option>
-              <option value="doctorate">دكتوراه</option>
-            </select>
-          </label>
-          <label>
-            السنة الدراسية
-            <input
-              value={metaForm.academic_year}
-              onChange={(e) => setMetaForm({ ...metaForm, academic_year: e.target.value })}
-            />
-          </label>
-          <label>
-            لاحقة الرمز (اختياري)
-            <input
-              value={metaForm.cohort_suffix}
-              onChange={(e) => setMetaForm({ ...metaForm, cohort_suffix: e.target.value })}
-            />
-          </label>
-          <label>
-            تسلسل (اختياري)
-            <input
-              value={metaForm.cohort_sequence}
-              onChange={(e) => setMetaForm({ ...metaForm, cohort_sequence: e.target.value })}
-              inputMode="numeric"
-            />
-          </label>
-          <label className="teacher-groups__code-field">
-            الرمز الرسمي
-            <div className="teacher-groups__code-row">
-              <input
-                value={metaForm.cohort_official_code}
-                onChange={(e) => setMetaForm({ ...metaForm, cohort_official_code: e.target.value })}
-                dir="ltr"
-                className="input--ltr"
-              />
-              <button
-                type="button"
-                className="btn btn--secondary"
-                disabled={metaSuggesting}
-                onClick={() => void suggestMetaOfficialCode()}
-              >
-                {metaSuggesting ? '…' : 'اقتراح'}
-              </button>
+      <header className="cohort-detail-head" style={{ borderColor: cohortAccentHex }}>
+        <div
+          className="cohort-detail-head__accent"
+          style={{ backgroundColor: cohortAccentHex }}
+          aria-hidden
+        />
+        <div className="cohort-detail-head__body">
+          <h1 className="cohort-detail-head__title">{group.group_name}</h1>
+          <dl className="cohort-detail-head__meta">
+            <div>
+              <dt>المستوى</dt>
+              <dd>{studyLevelLabelAr(group.study_level)}</dd>
             </div>
-          </label>
-          <button type="submit" className="btn btn--primary" disabled={metaSaving}>
-            {metaSaving ? 'جاري الحفظ…' : 'حفظ بيانات الفوج'}
-          </button>
-        </form>
-      </section>
-      ) : (
+            <div>
+              <dt>السنة الجامعية</dt>
+              <dd>{group.academic_year?.trim() ? group.academic_year : '—'}</dd>
+            </div>
+            <div>
+              <dt>المنسق</dt>
+              <dd>{headerCoordinatorLabel}</dd>
+            </div>
+            <div>
+              <dt>عدد الطلبة</dt>
+              <dd>{studentCount}</dd>
+            </div>
+          </dl>
+        </div>
+      </header>
+
+      {!isGroupOwner ? (
         <p className="muted small" style={{ marginBottom: '1.25rem' }}>
           أنت مرتبط بهذا الفوج كأستاذ مساعد؛ تعديل البيانات الرسمية متاح لمنشئ الفوج فقط.
         </p>
-      )}
+      ) : null}
 
-      <section className="section">
-        <h2>دعوة الطلبة</h2>
-        <p>
-          <strong>كود الانضمام القصير:</strong> {group.join_code}
-        </p>
-        {joinUrlStudent ? (
-          <>
-            <p className="muted small">رابط وQR آمن للانضمام (يُفضّل للطلبة):</p>
-            <p className="muted wrap" dir="ltr">
-              {joinUrlStudent}
-            </p>
-            {qrDataUrl ? (
-              <p className="teacher-group__qr">
-                <img src={qrDataUrl} alt="QR انضمام الطلبة" width={200} height={200} />
-              </p>
-            ) : null}
-          </>
-        ) : (
-          <p className="muted wrap">
-            {typeof window !== 'undefined' ? `${window.location.origin}/s/join?code=${group.join_code}` : ''}
-          </p>
-        )}
-        {isGroupOwner && teacherLinkSecret ? (
-          <div className="teacher-group__teacher-link">
-            <p className="muted small">
-              <strong>رمز ربط أستاذ آخر</strong> (لا يشارك مع الطلبة): انسخه لزميل يدرّس نفس الفوج.
-            </p>
-            <p className="mono wrap" dir="ltr">
-              {teacherLinkSecret}
-            </p>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              disabled={rotatingLink}
-              onClick={() => void rotateTeacherLink()}
-            >
-              {rotatingLink ? '…' : 'توليد رمز جديد'}
-            </button>
+      {isGroupOwner ? (
+        <details className="cohort-disclosure">
+          <summary className="cohort-disclosure__summary">دعوة الأساتذة</summary>
+          <div className="cohort-disclosure__body">
+            {teacherLinkSecret ? (
+              <>
+                <p className="muted small">لا يشارك مع الطلبة: انسخ الرمز لزميل يدرّس نفس الفوج.</p>
+                <p className="mono wrap" dir="ltr">
+                  {teacherLinkSecret}
+                </p>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  disabled={rotatingLink}
+                  onClick={() => void rotateTeacherLink()}
+                >
+                  {rotatingLink ? '…' : 'توليد رمز جديد'}
+                </button>
+              </>
+            ) : (
+              <p className="muted small">لا يتوفر رمز ربط حتى يُحمَّل من الخادم.</p>
+            )}
           </div>
-        ) : null}
-        <p>
-          <Link to={`/t/groups/${id}/staff`} className="btn btn--secondary">
-            محادثة طاقم التدريس
-          </Link>
+        </details>
+      ) : null}
+
+      <details className="cohort-disclosure">
+        <summary className="cohort-disclosure__summary">دعوة الطلبة</summary>
+        <div className="cohort-disclosure__body">
+          <p>
+            <strong>كود الانضمام القصير:</strong> {group.join_code}
+          </p>
+          {joinUrlStudent ? (
+            <>
+              <p className="muted small">رابط وQR آمن للانضمام (يُفضّل للطلبة):</p>
+              <p className="muted wrap" dir="ltr">
+                {joinUrlStudent}
+              </p>
+              {qrDataUrl ? (
+                <p className="teacher-group__qr">
+                  <img src={qrDataUrl} alt="QR انضمام الطلبة" width={200} height={200} />
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="muted wrap">
+              {typeof window !== 'undefined' ? `${window.location.origin}/s/join?code=${group.join_code}` : ''}
+            </p>
+          )}
+          <p>
+            <Link to={`/t/groups/${id}/staff`} className="btn btn--secondary">
+              محادثة طاقم التدريس
+            </Link>
+          </p>
+          <button
+            type="button"
+            className="btn btn--secondary"
+            onClick={() =>
+              shareWhatsAppMessage(
+                `انضم إلى فوج ${group.group_name} على Ostadi:\n${joinUrlStudent || `${typeof window !== 'undefined' ? window.location.origin : ''}/s/join?code=${group.join_code}`}\nالكود: ${group.join_code}`,
+              )
+            }
+          >
+            مشاركة واتساب
+          </button>
+        </div>
+      </details>
+
+      <section className="section">
+        <h2>حصص اليوم</h2>
+        <p className="muted small cohort-today-event__legend">
+          <span className="cohort-today-event__swatch cohort-today-event--mine" aria-hidden /> حصصك (أنت منشئ الحصة)
+          <span className="cohort-today-event__swatch cohort-today-event--other" aria-hidden /> حصص أساتذة آخرين
         </p>
-        <button
-          type="button"
-          className="btn btn--secondary"
-          onClick={() =>
-            shareWhatsAppMessage(
-              `انضم إلى فوج ${group.group_name} على Ostadi:\n${joinUrlStudent || `${typeof window !== 'undefined' ? window.location.origin : ''}/s/join?code=${group.join_code}`}\nالكود: ${group.join_code}`,
-            )
-          }
+        {scheduleBuckets.today.length === 0 ? (
+          <EmptyState title="لا حصص اليوم" />
+        ) : (
+          <ul className="cohort-schedule-preview-list cohort-today-list">
+            {scheduleBuckets.today.map((ev) => {
+              const mine = Boolean(session?.user?.id && ev.created_by === session.user.id)
+              return (
+                <li key={ev.id}>
+                  <a
+                    href={`#schedule-event-${ev.id}`}
+                    className={`cohort-today-event__link ${mine ? 'cohort-today-event--mine' : 'cohort-today-event--other'}`}
+                  >
+                    {scheduleEventSummaryLine(ev)}
+                  </a>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
+
+      <section className="section">
+        <h2>حصص هذا الأسبوع</h2>
+        <p className="muted small">بعد اليوم، ضمن الأسبوع الحالي المحلي.</p>
+        {scheduleBuckets.thisWeek.length === 0 ? (
+          <EmptyState title="لا حصص أخرى هذا الأسبوع" />
+        ) : (
+          <ul className="cohort-schedule-preview-list">
+            {scheduleBuckets.thisWeek.map((ev) => (
+              <li key={ev.id}>
+                <a href={`#schedule-event-${ev.id}`} className="cohort-schedule-preview-list__link">
+                  {scheduleEventSummaryLine(ev)}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="section">
+        <h2>حصص الأسبوع القادم</h2>
+        {scheduleBuckets.nextWeek.length === 0 ? (
+          <EmptyState title="لا حصص في الأسبوع القادم" />
+        ) : (
+          <ul className="cohort-schedule-preview-list">
+            {scheduleBuckets.nextWeek.map((ev) => (
+              <li key={ev.id}>
+                <a href={`#schedule-event-${ev.id}`} className="cohort-schedule-preview-list__link">
+                  {scheduleEventSummaryLine(ev)}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="section cohort-schedule-section">
+        <details
+          id="group-schedule"
+          className="cohort-disclosure cohort-disclosure--schedule"
+          open={schedulePanelOpen}
+          onToggle={(e) => setSchedulePanelOpen(e.currentTarget.open)}
         >
-          مشاركة واتساب
-        </button>
-      </section>
-
-      <section className="section">
-        <h2>نشر على الحائط</h2>
-        <form className="form" onSubmit={submitPost}>
-          <label>
-            النطاق
-            <select
-              value={postForm.scope}
-              onChange={(e) =>
-                setPostForm({
-                  ...postForm,
-                  scope: e.target.value === 'workspace' ? 'workspace' : 'group',
-                })
-              }
-            >
-              <option value="group">هذا الفوج فقط</option>
-              <option value="workspace" disabled={!isGroupOwner}>
-                كل أفواجي{!isGroupOwner ? ' (منشئ الفوج فقط)' : ''}
-              </option>
-            </select>
-          </label>
-          <label>
-            العنوان (اختياري)
-            <input
-              value={postForm.title}
-              onChange={(e) => setPostForm({ ...postForm, title: e.target.value })}
-            />
-          </label>
-          <label>
-            المحتوى
-            <textarea
-              rows={4}
-              value={postForm.content}
-              onChange={(e) => setPostForm({ ...postForm, content: e.target.value })}
-              required
-            />
-          </label>
-          <button type="submit" className="btn btn--primary">
-            نشر
-          </button>
-        </form>
-        <h3>آخر المنشورات</h3>
-        {posts.length === 0 ? (
-          <EmptyState title="لا منشورات بعد" />
-        ) : (
-          <ul className="post-list">
-            {posts.map((p) => (
-              <li key={p.id} className="post-card">
-                {p.pinned ? <span className="pill">مثبت</span> : null}
-                <span className="pill">{p.scope === 'workspace' ? 'عام' : 'الفوج'}</span>
-                {p.title ? <h4>{p.title}</h4> : null}
-                <p>{p.content}</p>
-                <time className="muted">{new Date(p.created_at).toLocaleString('ar-MA')}</time>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="section">
-        <h2>المواد والملفات</h2>
-        <form className="form" onSubmit={uploadMaterial}>
-          <label>
-            عنوان الملف
-            <input value={matTitle} onChange={(e) => setMatTitle(e.target.value)} />
-          </label>
-          <label>
-            ملف
-            <input type="file" onChange={(e) => setMatFile(e.target.files?.[0] ?? null)} />
-          </label>
-          <button type="submit" className="btn btn--primary">
-            رفع
-          </button>
-        </form>
-        {materials.length === 0 ? (
-          <EmptyState title="لا ملفات بعد" />
-        ) : (
-          <ul>
-            {materials.map((m) => (
-              <li key={m.id}>
-                {m.title} {m.file_path ? <span className="muted">(مخزن)</span> : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="section" id="group-schedule">
-        <h2>الجدول</h2>
-        <form className="form form--grid form--schedule-slot" onSubmit={submitSchedule}>
+          <summary className="cohort-disclosure__summary cohort-disclosure__summary--primary">
+            إضافة حصة
+          </summary>
+          <div className="cohort-disclosure__body">
+            <form className="form form--grid form--schedule-slot" onSubmit={submitSchedule}>
           <label>
             نوع الحدث
             <select
@@ -846,18 +1226,40 @@ export function TeacherGroupDetail() {
             type="submit"
             className="btn btn--primary schedule-add-submit"
             disabled={!canManageSchedule}
-            style={{
-              background: scheduleFormAccent,
-              color: scheduleFormFg,
-              border: 'none',
-            }}
           >
             {sched.event_type === 'seminar' ? 'إضافة ندوة' : 'إضافة حصة'}
           </button>
         </form>
-        <button type="button" className="btn btn--secondary" onClick={shareScheduleWhatsapp}>
-          مشاركة الجدول بواتساب
-        </button>
+        {scheduleConflictBlocker ? (
+          <div className="schedule-slot-request-banner muted small" style={{ marginTop: '0.75rem' }}>
+            <p>
+              يمكنك إرسال طلب لـ <strong>{scheduleEventCreatorLabel(scheduleConflictBlocker)}</strong>. عند الموافقة
+              تُلغى حصته وتُثبَّت حصتك بهذه البيانات.
+            </p>
+            <div className="schedule-slot-request-banner__actions" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <button
+                type="button"
+                className="btn btn--secondary"
+                disabled={slotRequestSending || !canManageSchedule}
+                onClick={() => void submitScheduleSlotRequest('new')}
+              >
+                {slotRequestSending ? 'جاري الإرسال…' : 'إرسال طلب موافقة'}
+              </button>
+              <button type="button" className="btn btn--ghost" onClick={() => setScheduleConflictBlocker(null)}>
+                تجاهل
+              </button>
+              <Link to="/t/schedule-requests" className="btn btn--ghost">
+                طلبات الحصص
+              </Link>
+            </div>
+          </div>
+        ) : null}
+            <button type="button" className="btn btn--secondary" onClick={shareScheduleWhatsapp}>
+              مشاركة الجدول بواتساب
+            </button>
+          </div>
+        </details>
+        <h2 className="cohort-schedule-section__list-title">الجدول — كل الحصص</h2>
         {events.length === 0 ? (
           <EmptyState title="لا أحداث في الجدول" />
         ) : (
@@ -875,11 +1277,12 @@ export function TeacherGroupDetail() {
                     <span className="pill">حصة</span>
                   )}{' '}
                   <strong>{ev.subject_name ?? (ev.event_type === 'seminar' ? 'ندوة' : 'حصة')}</strong> —{' '}
+                  {scheduleEventCreatorLabel(ev)} —{' '}
                   {new Date(ev.starts_at).toLocaleString('ar-MA')} →{' '}
                   {new Date(ev.ends_at).toLocaleString('ar-MA')} ({ev.mode === 'online' ? 'عن بُعد' : 'حضوري'})
                   {ev.location ? <span className="muted"> — {ev.location}</span> : null}
                 </div>
-                {canManageSchedule ? (
+                {canManageSchedule && canMutateScheduleEvent(ev) ? (
                   <div className="schedule-list__actions">
                     <button
                       type="button"
@@ -1008,6 +1411,38 @@ export function TeacherGroupDetail() {
                     <button type="submit" className="btn btn--primary" disabled={scheduleEditSaving}>
                       {scheduleEditSaving ? 'جاري الحفظ…' : 'حفظ التعديلات'}
                     </button>
+                    {editScheduleConflictBlocker ? (
+                      <div className="schedule-slot-request-banner muted small" style={{ marginTop: '0.75rem' }}>
+                        <p>
+                          يمكنك إرسال طلب لـ{' '}
+                          <strong>{scheduleEventCreatorLabel(editScheduleConflictBlocker)}</strong> لأخذ الفترة
+                          بالبيانات أعلاه.
+                        </p>
+                        <div
+                          className="schedule-slot-request-banner__actions"
+                          style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}
+                        >
+                          <button
+                            type="button"
+                            className="btn btn--secondary"
+                            disabled={slotRequestSending}
+                            onClick={() => void submitScheduleSlotRequest('edit')}
+                          >
+                            {slotRequestSending ? 'جاري الإرسال…' : 'إرسال طلب موافقة'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost"
+                            onClick={() => setEditScheduleConflictBlocker(null)}
+                          >
+                            تجاهل
+                          </button>
+                          <Link to="/t/schedule-requests" className="btn btn--ghost">
+                            طلبات الحصص
+                          </Link>
+                        </div>
+                      </div>
+                    ) : null}
                   </form>
                 ) : null}
               </li>
@@ -1017,42 +1452,235 @@ export function TeacherGroupDetail() {
       </section>
 
       <section className="section">
-        <h2>الطلبة والمنسق</h2>
-        <ul className="member-list">
-          {members.map((m) => (
-            <li key={m.id} className={m.role_in_group === 'coordinator' ? 'member--coord' : ''}>
-              <span>
-                {m.display_name ?? m.user_id}
-                {m.role_in_group === 'teacher' ? (
-                  <span className="pill">أستاذ</span>
-                ) : m.role_in_group === 'coordinator' ? (
-                  <span className="pill pill--coord">منسق</span>
-                ) : (
-                  <span className="pill pill--student">طالب</span>
-                )}
-              </span>
-              {m.role_in_group === 'student' ? (
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  onClick={() => void promote(m, 'coordinator')}
-                >
-                  جعله منسقاً
-                </button>
-              ) : null}
-              {m.role_in_group === 'coordinator' ? (
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  onClick={() => void promote(m, 'student')}
-                >
-                  إلغاء المنسق
-                </button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        <h2>الطلبة والمنسّق</h2>
+        <p className="muted small">
+          صف واحد لكل عضو؛ صف المنسّق في الأعلى بلون مميّز. التواصل يفتح البريد أو واتساب أو الهاتف حسب التوفر.
+        </p>
+        {coordinatorMembers.length === 0 && studentMembers.length === 0 ? (
+          <EmptyState title="لا طلبة بعد" />
+        ) : (
+          <div className="cohort-roster-wrap">
+            <div className="cohort-roster-header cohort-roster-row" aria-hidden>
+              <div className="cohort-roster__cell cohort-roster__cell--action">إجراء الدور</div>
+              <div className="cohort-roster__cell cohort-roster__cell--name">الاسم الكامل</div>
+              <div className="cohort-roster__cell cohort-roster__cell--num">الرقم الجامعي</div>
+              <div className="cohort-roster__cell cohort-roster__cell--email">البريد</div>
+              <div className="cohort-roster__cell cohort-roster__cell--wa">واتساب</div>
+              <div className="cohort-roster__cell cohort-roster__cell--btn">تواصل</div>
+              <div className="cohort-roster__cell cohort-roster__cell--btn">حجب</div>
+              <div className="cohort-roster__cell cohort-roster__cell--btn">حذف</div>
+            </div>
+            {coordinatorMembers.map((m) => renderRosterRow(m, 'coord'))}
+            {studentMembers.map((m) => renderRosterRow(m, 'student'))}
+          </div>
+        )}
       </section>
+
+      {isLinkedStaff && !isGroupOwner ? (
+        <section className="section cohort-danger-zone">
+          <h2>انسحاب من الفوج</h2>
+          <p className="muted small">
+            أنت مرتبط بهذا الفوج كأستاذ مساعد. يمكنك إلغاء الربط دون حذف الفوج.
+          </p>
+          <button
+            type="button"
+            className="btn btn--secondary"
+            disabled={revokeBusy}
+            onClick={() => void handleRevokeSelf()}
+          >
+            {revokeBusy ? 'جاري المعالجة…' : 'الانسحاب من هذا الفوج'}
+          </button>
+        </section>
+      ) : null}
+
+      {isGroupOwner ? (
+        <section className="section cohort-danger-zone cohort-danger-zone--archive">
+          <h2>أرشفة الفوج</h2>
+          <p className="muted small">
+            الفوج المؤرشف لا يظهر في قوائم الأفواج النشطة. لا يمكن التراجع من هذه الصفحة.
+          </p>
+          <button
+            type="button"
+            className="btn btn--secondary"
+            disabled={archiveBusy}
+            onClick={() => void handleArchiveGroup()}
+          >
+            {archiveBusy ? 'جاري الأرشفة…' : 'أرشفة هذا الفوج'}
+          </button>
+        </section>
+      ) : null}
+
+      <details className="cohort-extra-content">
+        <summary>محتوى إضافي (بيانات رسمية، حائط، مواد)</summary>
+
+        {isGroupOwner ? (
+          <section className="section">
+            <h2>بيانات الفوج الرسمية</h2>
+            <p className="muted small">
+              المستوى والرمز الرسمي (مثل الرمز الذي يعطيه منسق الفوج) يربط المحتوى والجدول بهذا الفوج دون
+              الخلط مع أفواج أخرى.
+            </p>
+            <form className="form form--grid" onSubmit={saveGroupMeta}>
+              <label className="teacher-groups__color-field">
+                لون الفوج (الصفحة، الرسائل، والقوائم المرتبطة بهذا الفوج)
+                <input
+                  type="color"
+                  value={metaForm.accent_color}
+                  onChange={(e) => setMetaForm({ ...metaForm, accent_color: e.target.value })}
+                  aria-label="لون تمييز الفوج"
+                />
+              </label>
+              <label>
+                المستوى الدراسي
+                <select
+                  value={metaForm.study_level}
+                  onChange={(e) => setMetaForm({ ...metaForm, study_level: e.target.value as StudyLevel })}
+                >
+                  <option value="licence">إجازة</option>
+                  <option value="master">ماستر</option>
+                  <option value="doctorate">دكتوراه</option>
+                </select>
+              </label>
+              <label>
+                السنة الدراسية
+                <input
+                  value={metaForm.academic_year}
+                  onChange={(e) => setMetaForm({ ...metaForm, academic_year: e.target.value })}
+                />
+              </label>
+              <label>
+                لاحقة الرمز (اختياري)
+                <input
+                  value={metaForm.cohort_suffix}
+                  onChange={(e) => setMetaForm({ ...metaForm, cohort_suffix: e.target.value })}
+                />
+              </label>
+              <label>
+                تسلسل (اختياري)
+                <input
+                  value={metaForm.cohort_sequence}
+                  onChange={(e) => setMetaForm({ ...metaForm, cohort_sequence: e.target.value })}
+                  inputMode="numeric"
+                />
+              </label>
+              <label className="teacher-groups__code-field">
+                الرمز الرسمي
+                <div className="teacher-groups__code-row">
+                  <input
+                    value={metaForm.cohort_official_code}
+                    onChange={(e) => setMetaForm({ ...metaForm, cohort_official_code: e.target.value })}
+                    dir="ltr"
+                    className="input--ltr"
+                  />
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    disabled={metaSuggesting}
+                    onClick={() => void suggestMetaOfficialCode()}
+                  >
+                    {metaSuggesting ? '…' : 'اقتراح'}
+                  </button>
+                </div>
+              </label>
+              <button type="submit" className="btn btn--primary" disabled={metaSaving}>
+                {metaSaving ? 'جاري الحفظ…' : 'حفظ بيانات الفوج'}
+              </button>
+            </form>
+          </section>
+        ) : null}
+
+        <section className="section">
+          <h2>نشر على الحائط</h2>
+          <form className="form" onSubmit={submitPost}>
+            <label>
+              النطاق
+              <select
+                value={postForm.scope}
+                onChange={(e) =>
+                  setPostForm({
+                    ...postForm,
+                    scope: e.target.value === 'workspace' ? 'workspace' : 'group',
+                  })
+                }
+              >
+                <option value="group">هذا الفوج فقط</option>
+                <option value="workspace" disabled={!isGroupOwner}>
+                  كل أفواجي{!isGroupOwner ? ' (منشئ الفوج فقط)' : ''}
+                </option>
+              </select>
+            </label>
+            <label>
+              العنوان (اختياري)
+              <input
+                value={postForm.title}
+                onChange={(e) => setPostForm({ ...postForm, title: e.target.value })}
+              />
+            </label>
+            <label>
+              المحتوى
+              <textarea
+                rows={4}
+                value={postForm.content}
+                onChange={(e) => setPostForm({ ...postForm, content: e.target.value })}
+                required
+              />
+            </label>
+            <button type="submit" className="btn btn--primary">
+              نشر
+            </button>
+          </form>
+          <h3>آخر المنشورات</h3>
+          {posts.length === 0 ? (
+            <EmptyState title="لا منشورات بعد" />
+          ) : (
+            <ul className="post-list">
+              {posts.map((p) => (
+                <li key={p.id} className="post-card">
+                  {p.pinned ? <span className="pill">مثبت</span> : null}
+                  <span className="pill">{p.scope === 'workspace' ? 'عام' : 'الفوج'}</span>
+                  {p.title ? <h4>{p.title}</h4> : null}
+                  <p>{p.content}</p>
+                  <time className="muted">{new Date(p.created_at).toLocaleString('ar-MA')}</time>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="section">
+          <h2>المواد والملفات</h2>
+          <form className="form" onSubmit={uploadMaterial}>
+            <label>
+              عنوان الملف
+              <input value={matTitle} onChange={(e) => setMatTitle(e.target.value)} />
+            </label>
+            <label>
+              ملف
+              <input type="file" onChange={(e) => setMatFile(e.target.files?.[0] ?? null)} />
+            </label>
+            <button type="submit" className="btn btn--primary">
+              رفع
+            </button>
+          </form>
+          {materials.length === 0 ? (
+            <EmptyState title="لا ملفات بعد" />
+          ) : (
+            <ul>
+              {materials.map((m) => (
+                <li key={m.id}>
+                  {m.title} {m.file_path ? <span className="muted">(مخزن)</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </details>
+
+      <p className="cohort-detail-footer-nav">
+        <Link to="/t" className="btn btn--ghost">
+          العودة إلى الرئيسية
+        </Link>
+      </p>
     </div>
   )
 }

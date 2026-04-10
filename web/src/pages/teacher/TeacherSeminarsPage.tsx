@@ -35,7 +35,7 @@ export function TeacherSeminarsPage() {
     const wsId = workspace.id as string
     const { data, error } = await supabase
       .from('schedule_events')
-      .select('*, groups(group_name)')
+      .select('*, groups(group_name), profiles:profiles!schedule_events_created_by_fkey(full_name)')
       .eq('workspace_id', wsId)
       .eq('created_by', uid)
       .eq('event_type', 'seminar')

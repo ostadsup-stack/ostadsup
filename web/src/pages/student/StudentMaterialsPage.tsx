@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import type { Material } from '../../types'
+import { cohortPageSurfaceStyle, normalizeGroupAccent } from '../../lib/groupTheme'
 import { fetchActiveStudentMemberships, filterStudentRoleRows } from '../../lib/studentGroup'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
@@ -13,6 +14,7 @@ export function StudentMaterialsPage() {
   const { session } = useAuth()
   const [err, setErr] = useState<string | null>(null)
   const [materials, setMaterials] = useState<Material[]>([])
+  const [cohortSurface, setCohortSurface] = useState<CSSProperties | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -28,6 +30,7 @@ export function StudentMaterialsPage() {
       if (mErr) {
         setErr(mErr)
         setMaterials([])
+        setCohortSurface(null)
         setLoading(false)
         return
       }
@@ -37,9 +40,12 @@ export function StudentMaterialsPage() {
       if (!gid) {
         setErr(null)
         setMaterials([])
+        setCohortSurface(null)
         setLoading(false)
         return
       }
+      const accent = normalizeGroupAccent(rows.find((r) => r.group_id === gid)?.groups?.accent_color)
+      setCohortSurface(cohortPageSurfaceStyle(accent))
       const { data, error } = await supabase
         .from('materials')
         .select('*')
@@ -68,7 +74,7 @@ export function StudentMaterialsPage() {
   if (loading) return <Loading />
 
   return (
-    <div className="page">
+    <div className={cohortSurface ? 'page page--cohort' : 'page'} style={cohortSurface ?? undefined}>
       <PageHeader title="المواد العلمية" subtitle="ملفات وفقرات مرفوعة في فوجك." />
       <ErrorBanner message={err} />
       {materials.length === 0 ? (

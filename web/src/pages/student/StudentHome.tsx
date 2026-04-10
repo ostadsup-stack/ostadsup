@@ -9,7 +9,9 @@ import {
   filterStudentRoleRows,
   type StudentMemberRow,
 } from '../../lib/studentGroup'
+import { cohortListLinkAccentStyle, cohortPageSurfaceStyle, normalizeGroupAccent } from '../../lib/groupTheme'
 import { addDays, sameLocalDay, startOfMonday } from '../../lib/teacherWeekSchedule'
+import { scheduleEventCreatorLabel } from '../../lib/scheduleConflict'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { EmptyState } from '../../components/EmptyState'
@@ -78,7 +80,7 @@ export function StudentHome() {
       const [ev, posts, parts] = await Promise.all([
         supabase
           .from('schedule_events')
-          .select('*')
+          .select('*, profiles:profiles!schedule_events_created_by_fkey(full_name)')
           .eq('group_id', gid)
           .gte('starts_at', scheduleBounds.rangeStart)
           .lte('starts_at', scheduleBounds.rangeEnd)
@@ -128,6 +130,10 @@ export function StudentHome() {
     rows.find((r) => r.role_in_group === 'coordinator')?.group_id ??
     rows[0]?.group_id
   const primaryGroupName = rows.find((r) => r.group_id === primaryGroupId)?.groups?.group_name
+  const primaryCohortAccent =
+    primaryGroupId != null
+      ? normalizeGroupAccent(rows.find((r) => r.group_id === primaryGroupId)?.groups?.accent_color)
+      : null
 
   const todayEvents = useMemo(() => {
     const now = scheduleBounds.now
@@ -147,7 +153,10 @@ export function StudentHome() {
   if (loading) return <Loading />
 
   return (
-    <div className="page student-home">
+    <div
+      className={`page student-home${primaryCohortAccent ? ' page--cohort' : ''}`}
+      style={primaryCohortAccent ? cohortPageSurfaceStyle(primaryCohortAccent) : undefined}
+    >
       <PageHeader title="الرئيسية" subtitle="ملخص فوجك، الجدول، والرسائل." />
       <ErrorBanner message={err} />
 
@@ -199,6 +208,7 @@ export function StudentHome() {
                 {todayEvents.map((ev) => (
                   <li key={ev.id} className="schedule-list__item">
                     <strong>{ev.subject_name ?? (ev.event_type === 'seminar' ? 'ندوة' : 'حصة')}</strong> —{' '}
+                    {scheduleEventCreatorLabel(ev)} —{' '}
                     {new Date(ev.starts_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })} →{' '}
                     {new Date(ev.ends_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })}{' '}
                     <span className="muted">({ev.mode === 'online' ? 'عن بُعد' : 'حضوري'})</span>
@@ -218,6 +228,7 @@ export function StudentHome() {
                 {nextWeekEvents.map((ev) => (
                   <li key={ev.id} className="schedule-list__item">
                     <strong>{ev.subject_name ?? (ev.event_type === 'seminar' ? 'ندوة' : 'حصة')}</strong> —{' '}
+                    {scheduleEventCreatorLabel(ev)} —{' '}
                     {new Date(ev.starts_at).toLocaleString('ar-MA', {
                       weekday: 'short',
                       day: 'numeric',
@@ -268,7 +279,13 @@ export function StudentHome() {
               <ul className="list-links">
                 {convPreview.map((c) => (
                   <li key={c.id}>
-                    <Link to={`/s/messages/${c.id}`}>{c.subject?.trim() || 'محادثة'}</Link>
+                    <Link
+                      to={`/s/messages/${c.id}`}
+                      className={primaryCohortAccent ? 'list-links__link--cohort' : undefined}
+                      style={primaryCohortAccent ? cohortListLinkAccentStyle(primaryCohortAccent) : undefined}
+                    >
+                      {c.subject?.trim() || 'محادثة'}
+                    </Link>
                   </li>
                 ))}
               </ul>

@@ -4,9 +4,16 @@ import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { fetchWorkspaceForTeacher } from '../../lib/workspace'
 import { whatsappHref } from '../../lib/whatsapp'
-import { addDays, startOfMonday, fetchTeacherWeekScheduleRows, type ScheduleWeekEventRow } from '../../lib/teacherWeekSchedule'
+import {
+  addDays,
+  startOfMonday,
+  fetchTeacherWeekScheduleRows,
+  emptyScheduleOverlapAudit,
+  type ScheduleWeekEventRow,
+} from '../../lib/teacherWeekSchedule'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
+import { ScheduleOverlapBanners } from '../../components/ScheduleOverlapBanners'
 import { TeacherWeekScheduleGrid } from '../../components/teacher/TeacherWeekScheduleGrid'
 
 export function TeacherDashboard() {
@@ -23,6 +30,7 @@ export function TeacherDashboard() {
   const [schedRows, setSchedRows] = useState<ScheduleWeekEventRow[]>([])
   const [schedLoading, setSchedLoading] = useState(false)
   const [schedErr, setSchedErr] = useState<string | null>(null)
+  const [schedOverlapAudit, setSchedOverlapAudit] = useState(emptyScheduleOverlapAudit)
 
   useEffect(() => {
     let ok = true
@@ -74,6 +82,7 @@ export function TeacherDashboard() {
     if (!uid || !workspaceId) {
       setSchedRows([])
       setSchedLoading(false)
+      setSchedOverlapAudit(emptyScheduleOverlapAudit)
       return
     }
     ;(async () => {
@@ -82,15 +91,23 @@ export function TeacherDashboard() {
       const weekStart = addDays(startOfMonday(new Date()), weekOffset * 7)
       const weekEnd = addDays(weekStart, 6)
       weekEnd.setHours(23, 59, 59, 999)
-      const { rows, error } = await fetchTeacherWeekScheduleRows(supabase, uid, workspaceId, weekStart, weekEnd)
+      const { rows, error, overlapAudit } = await fetchTeacherWeekScheduleRows(
+        supabase,
+        uid,
+        workspaceId,
+        weekStart,
+        weekEnd,
+      )
       if (!ok) return
       setSchedLoading(false)
       if (error) {
         setSchedErr(error)
         setSchedRows([])
+        setSchedOverlapAudit(emptyScheduleOverlapAudit)
       } else {
         setSchedErr(null)
         setSchedRows(rows)
+        setSchedOverlapAudit(overlapAudit)
       }
     })()
     return () => {
@@ -208,6 +225,7 @@ export function TeacherDashboard() {
               <p className="muted small teacher-home__schedule-hint">
                 انقر على حصة للانتقال إلى الفوج وتعديلها أو حذفها أو إعادة جدولتها.
               </p>
+              <ScheduleOverlapBanners audit={schedOverlapAudit} />
               {schedErr ? <p className="muted small">{schedErr}</p> : null}
               <TeacherWeekScheduleGrid
                 rows={schedRows}

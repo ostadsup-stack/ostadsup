@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import type { Post } from '../../types'
+import { cohortPageSurfaceStyle, normalizeGroupAccent } from '../../lib/groupTheme'
 import { fetchActiveStudentMemberships, filterStudentRoleRows } from '../../lib/studentGroup'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
@@ -13,6 +14,7 @@ export function StudentPostsPage() {
   const { session } = useAuth()
   const [err, setErr] = useState<string | null>(null)
   const [posts, setPosts] = useState<Post[]>([])
+  const [cohortSurface, setCohortSurface] = useState<CSSProperties | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -28,6 +30,7 @@ export function StudentPostsPage() {
       if (mErr) {
         setErr(mErr)
         setPosts([])
+        setCohortSurface(null)
         setLoading(false)
         return
       }
@@ -37,6 +40,7 @@ export function StudentPostsPage() {
       if (!gid || !rows[0]?.groups) {
         setErr(null)
         setPosts([])
+        setCohortSurface(null)
         setLoading(false)
         return
       }
@@ -44,9 +48,12 @@ export function StudentPostsPage() {
       if (!ws) {
         setErr('تعذر تحديد مساحة الفوج')
         setPosts([])
+        setCohortSurface(null)
         setLoading(false)
         return
       }
+      const accent = normalizeGroupAccent(rows.find((r) => r.group_id === gid)?.groups?.accent_color)
+      setCohortSurface(cohortPageSurfaceStyle(accent))
       const { data, error } = await supabase
         .from('posts')
         .select('*')
@@ -68,7 +75,7 @@ export function StudentPostsPage() {
   if (loading) return <Loading />
 
   return (
-    <div className="page">
+    <div className={cohortSurface ? 'page page--cohort' : 'page'} style={cohortSurface ?? undefined}>
       <PageHeader title="منشورات الأساتذة" subtitle="منشورات الحائط الخاصة بفوجك ومساحة الأستاذ." />
       <ErrorBanner message={err} />
       {posts.length === 0 ? (

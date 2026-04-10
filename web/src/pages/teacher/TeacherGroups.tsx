@@ -5,38 +5,28 @@ import { supabase } from '../../lib/supabase'
 import { fetchWorkspaceForTeacher } from '../../lib/workspace'
 import { randomJoinCode } from '../../lib/codes'
 import { buildSuggestedCohortCode } from '../../lib/cohortCode'
-import { localTodayBoundsIso } from '../../lib/teacherGroups'
+import { localTodayBoundsIso, studyLevelLabelAr } from '../../lib/teacherGroups'
 import type { StudyLevel, TeacherGroupSummaryRow } from '../../types'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { EmptyState } from '../../components/EmptyState'
 import { PageHeader } from '../../components/PageHeader'
-
-const DEFAULT_GROUP_ACCENT = '#2563eb'
-
-function formatTodayEvent(
-  subject: string | null,
-  startsAt: string | null,
-  endsAt: string | null,
-  mode: string | null,
-): string {
-  if (!startsAt || !endsAt) return 'لا حصة اليوم'
-  const s = new Date(startsAt)
-  const e = new Date(endsAt)
-  const time = `${s.toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })} – ${e.toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })}`
-  const place = mode === 'online' ? 'عن بُعد' : 'حضوري'
-  const sub = subject?.trim() || 'حصة'
-  return `${sub} · ${time} · ${place}`
-}
+import { DEFAULT_GROUP_ACCENT } from '../../lib/groupTheme'
+import { rgbaFromHex } from '../../lib/colorContrast'
 
 function normalizeSummaryRows(raw: unknown): TeacherGroupSummaryRow[] {
   const list = (raw as object[] | null) ?? []
   return list.map((row) => {
-    const r = row as TeacherGroupSummaryRow & { unread_coordinator_count?: number; accent_color?: string | null }
+    const r = row as TeacherGroupSummaryRow & {
+      unread_coordinator_count?: number
+      accent_color?: string | null
+      coordinator_name?: string | null
+    }
     return {
       ...r,
       unread_coordinator_count: Number(r.unread_coordinator_count ?? 0),
       accent_color: r.accent_color ?? null,
+      coordinator_name: r.coordinator_name?.trim() || null,
     }
   })
 }
@@ -227,7 +217,7 @@ export function TeacherGroups() {
     <div className="page">
       <PageHeader
         title="الأفواج"
-        subtitle="اسم الفوج، السنة، عدد الطلبة، حصة اليوم، ورسائل المنسق غير المقروءة."
+        subtitle="قائمة بكل فوج: الاسم، المستوى، السنة الجامعية، المنسق، بلون مميّز لكل فوج."
       />
       <ErrorBanner message={err} />
 
@@ -238,7 +228,7 @@ export function TeacherGroups() {
           onClick={() => setShowCreateForm((v) => !v)}
           aria-expanded={showCreateForm}
         >
-          {showCreateForm ? 'إخفاء نموذج الإضافة' : 'إضافة فوج'}
+          {showCreateForm ? 'إغلاق نموذج الإضافة' : 'إضافة فوج'}
         </button>
       </div>
 
@@ -250,57 +240,64 @@ export function TeacherGroups() {
             hint='اضغط «إضافة فوج» لإنشاء فوج، أو استخدم «ربط فوج» في الأسفل.'
           />
         ) : (
-          <ul className="teacher-groups__list teacher-groups__list--compact">
-            {rows.map((r) => {
-              const accent = r.accent_color && /^#[0-9A-Fa-f]{6}$/.test(r.accent_color) ? r.accent_color : DEFAULT_GROUP_ACCENT
-              const coordUnread = r.unread_coordinator_count
-              return (
-                <li key={r.group_id}>
-                  <Link to={`/t/groups/${r.group_id}`} className="teacher-groups__row teacher-groups__row--compact">
-                    <span
-                      className="teacher-groups__row-accent"
-                      style={{ backgroundColor: accent }}
-                      aria-hidden
-                    />
-                    <span className="teacher-groups__compact-name">{r.group_name}</span>
-                    {r.is_owner === false ? (
-                      <span className="pill teacher-groups__compact-pill">مرتبط</span>
-                    ) : null}
-                    <span className="teacher-groups__compact-year muted" title="السنة الدراسية">
-                      {r.academic_year?.trim() || '—'}
-                    </span>
-                    <span className="teacher-groups__compact-students" title="عدد الطلبة">
-                      {r.student_count}
-                    </span>
-                    <span className="teacher-groups__compact-today muted small" title="حصة اليوم">
-                      {formatTodayEvent(
-                        r.today_event_subject,
-                        r.today_event_starts_at,
-                        r.today_event_ends_at,
-                        r.today_event_mode,
-                      )}
-                    </span>
-                    {coordUnread > 0 ? (
+          <div className="teacher-groups__sheet">
+            <div className="teacher-groups__thead" aria-hidden>
+              <span className="teacher-groups__th teacher-groups__th--accent" />
+              <span className="teacher-groups__th">اسم الفوج</span>
+              <span className="teacher-groups__th">المستوى</span>
+              <span className="teacher-groups__th">السنة الجامعية</span>
+              <span className="teacher-groups__th">المنسق</span>
+              <span className="teacher-groups__th teacher-groups__th--meta" />
+            </div>
+            <ul className="teacher-groups__list teacher-groups__list--lines">
+              {rows.map((r) => {
+                const accent =
+                  r.accent_color && /^#[0-9A-Fa-f]{6}$/.test(r.accent_color) ? r.accent_color : DEFAULT_GROUP_ACCENT
+                const coordUnread = r.unread_coordinator_count
+                const rowBg = rgbaFromHex(accent, 0.08) ?? undefined
+                return (
+                  <li key={r.group_id}>
+                    <Link
+                      to={`/t/groups/${r.group_id}`}
+                      className="teacher-groups__row-line"
+                      style={{ backgroundColor: rowBg }}
+                    >
                       <span
-                        className="teacher-groups__coord-unread"
-                        title="رسائل غير مقروءة من المنسق (محادثة الأستاذ والمنسق)"
-                      >
-                        {coordUnread > 99 ? '99+' : coordUnread}
+                        className="teacher-groups__row-accent teacher-groups__row-accent--line"
+                        style={{ backgroundColor: accent }}
+                        aria-hidden
+                      />
+                      <span className="teacher-groups__cell teacher-groups__cell--name">{r.group_name}</span>
+                      <span className="teacher-groups__cell muted">{studyLevelLabelAr(r.study_level)}</span>
+                      <span className="teacher-groups__cell muted" title="السنة الجامعية">
+                        {r.academic_year?.trim() || '—'}
                       </span>
-                    ) : (
-                      <span className="teacher-groups__coord-unread teacher-groups__coord-unread--empty" aria-hidden />
-                    )}
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
+                      <span className="teacher-groups__cell teacher-groups__cell--coord" title="منسق الفوج">
+                        <span className="teacher-groups__coord-name">{r.coordinator_name?.trim() || '—'}</span>
+                        {coordUnread > 0 ? (
+                          <span
+                            className="teacher-groups__coord-unread teacher-groups__coord-unread--inline"
+                            title="رسائل غير مقروءة من المنسق"
+                          >
+                            {coordUnread > 99 ? '99+' : coordUnread}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="teacher-groups__cell teacher-groups__cell--meta">
+                        {r.is_owner === false ? <span className="pill teacher-groups__compact-pill">مرتبط</span> : null}
+                      </span>
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
         )}
       </section>
 
       {showCreateForm ? (
         <section ref={createSectionRef} id="teacher-groups-create" className="section" tabIndex={-1}>
-          <h2>إنشاء فوج جديد</h2>
+          <h2>إضافة فوج</h2>
           <form className="form form--grid" onSubmit={(e) => void createGroup(e)}>
             <label>
               اسم الفوج

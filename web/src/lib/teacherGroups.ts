@@ -1,3 +1,14 @@
+import type { StudyLevel } from '../types'
+
+/** تسمية المستوى الدراسي للعرض في قوائم الأفواج */
+export function studyLevelLabelAr(level: StudyLevel | string | null | undefined): string {
+  const l = String(level ?? '')
+  if (l === 'licence') return 'إجازة'
+  if (l === 'master') return 'ماستر'
+  if (l === 'doctorate') return 'دكتوراه'
+  return '—'
+}
+
 /** ISO bounds for the teacher's local calendar day (for RPC `teacher_group_list_summaries`). */
 export function localTodayBoundsIso(): { p_today_start: string; p_today_end: string } {
   const n = new Date()

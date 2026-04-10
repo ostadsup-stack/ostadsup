@@ -9,10 +9,15 @@ import {
   mapRpcRowsToQuickGroups,
   type TeacherScheduleQuickGroup,
 } from '../../lib/teacherGroups'
-import { fetchTeacherWeekScheduleRows, type ScheduleWeekEventRow } from '../../lib/teacherWeekSchedule'
+import {
+  fetchTeacherWeekScheduleRows,
+  emptyScheduleOverlapAudit,
+  type ScheduleWeekEventRow,
+} from '../../lib/teacherWeekSchedule'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { PageHeader } from '../../components/PageHeader'
+import { ScheduleOverlapBanners } from '../../components/ScheduleOverlapBanners'
 import { TeacherWeekScheduleGrid } from '../../components/teacher/TeacherWeekScheduleGrid'
 import { addDays, startOfMonday } from '../../lib/teacherWeekSchedule'
 
@@ -25,6 +30,7 @@ export function TeacherSchedulePage() {
   const [rows, setRows] = useState<ScheduleWeekEventRow[]>([])
   const [quickGroups, setQuickGroups] = useState<TeacherScheduleQuickGroup[]>([])
   const [loading, setLoading] = useState(true)
+  const [overlapAudit, setOverlapAudit] = useState(emptyScheduleOverlapAudit)
 
   const reload = useCallback(async () => {
     const uid = session?.user?.id
@@ -44,6 +50,7 @@ export function TeacherSchedulePage() {
       setErr(wErr?.message ?? 'لم يُعثر على مساحة الأستاذ')
       setRows([])
       setQuickGroups([])
+      setOverlapAudit(emptyScheduleOverlapAudit)
       setLoading(false)
       return
     }
@@ -61,10 +68,12 @@ export function TeacherSchedulePage() {
     if (schedRes.error) {
       setErr(schedRes.error)
       setRows([])
+      setOverlapAudit(emptyScheduleOverlapAudit)
       return
     }
     setErr(null)
     setRows(schedRes.rows)
+    setOverlapAudit(schedRes.overlapAudit)
   }, [session?.user?.id, weekOffset])
 
   useEffect(() => {
@@ -80,6 +89,8 @@ export function TeacherSchedulePage() {
         subtitle="أسبوع كامل من 8:00 إلى 22:00 بتوقيت جهازك. التعديل من صفحة كل فوج."
       />
       <ErrorBanner message={err} />
+
+      <ScheduleOverlapBanners audit={overlapAudit} />
 
       {quickGroups.length > 0 ? (
         <div className="schedule-page__quick-add">

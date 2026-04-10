@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { Loading } from './components/Loading'
+import { ErrorBanner } from './components/ErrorBanner'
 import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { HomeRedirect } from './pages/HomeRedirect'
@@ -13,6 +14,7 @@ import { TeacherInbox } from './pages/teacher/TeacherInbox'
 import { TeacherConversation } from './pages/teacher/TeacherConversation'
 import { TeacherNotifications } from './pages/teacher/TeacherNotifications'
 import { TeacherSchedulePage } from './pages/teacher/TeacherSchedulePage'
+import { TeacherScheduleRequestsPage } from './pages/teacher/TeacherScheduleRequestsPage'
 import { TeacherAccountPage } from './pages/teacher/TeacherAccountPage'
 import { TeacherBooksPage } from './pages/teacher/TeacherBooksPage'
 import { TeacherPostsPage } from './pages/teacher/TeacherPostsPage'
@@ -31,11 +33,33 @@ import { StudentMaterialsPage } from './pages/student/StudentMaterialsPage'
 import { StudentAccountPage } from './pages/student/StudentAccountPage'
 import { PublicTeacherSite } from './pages/public/PublicTeacherSite'
 
+/** عند وجود جلسة دون profile: إظهار الخطأ أو الاستمرار بالتحميل (مثل HomeRedirect) */
+function ProfileMissingView() {
+  const { error, signOut } = useAuth()
+  return (
+    <div className="main main--narrow" style={{ margin: '2rem auto' }}>
+      {error ? (
+        <>
+          <ErrorBanner message={error} />
+          <p className="muted">
+            إن استمرت المشكلة بعد تنفيذ SQL للدالة ensure_my_profile، جرّب تسجيل الخروج والدخول مجدداً.
+          </p>
+          <button type="button" className="btn btn--primary" onClick={() => void signOut()}>
+            تسجيل الخروج
+          </button>
+        </>
+      ) : (
+        <Loading label="جاري تحميل الملف الشخصي…" />
+      )}
+    </div>
+  )
+}
+
 function RequireTeacher({ children }: { children: React.ReactNode }) {
   const { profile, loading, session } = useAuth()
   if (loading) return <Loading />
   if (!session) return <Navigate to="/login" replace />
-  if (!profile) return <Loading label="جاري التحميل…" />
+  if (!profile) return <ProfileMissingView />
   if (profile.role !== 'teacher' && profile.role !== 'admin') {
     return <Navigate to="/s" replace />
   }
@@ -46,7 +70,7 @@ function RequireStudent({ children }: { children: React.ReactNode }) {
   const { profile, loading, session } = useAuth()
   if (loading) return <Loading />
   if (!session) return <Navigate to="/login" replace />
-  if (!profile) return <Loading label="جاري التحميل…" />
+  if (!profile) return <ProfileMissingView />
   if (profile.role === 'teacher' || profile.role === 'admin') {
     return <Navigate to="/t" replace />
   }
@@ -93,6 +117,7 @@ function AppRoutes() {
         <Route path="inbox/:id" element={<TeacherConversation />} />
         <Route path="notifications" element={<TeacherNotifications />} />
         <Route path="schedule" element={<TeacherSchedulePage />} />
+        <Route path="schedule-requests" element={<TeacherScheduleRequestsPage />} />
         <Route path="settings" element={<TeacherSettingsPage />} />
         <Route path="achievements" element={<TeacherAchievementsPage />} />
         <Route path="seminars" element={<TeacherSeminarsPage />} />

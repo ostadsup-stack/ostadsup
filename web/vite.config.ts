@@ -1,6 +1,48 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
+import type { Plugin, PreviewServer, ViteDevServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+
+const repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
+const ostadiDebugLogFile = path.join(repoRoot, '.cursor', 'debug-8bf7a6.log')
+
+function attachOstadiDebugLogMiddleware(server: ViteDevServer | PreviewServer) {
+  server.middlewares.use('/__ostadi-debug-log', (req, res, next) => {
+    if (req.method !== 'POST') {
+      next()
+      return
+    }
+    const chunks: Buffer[] = []
+    req.on('data', (chunk: Buffer) => chunks.push(chunk))
+    req.on('end', () => {
+      try {
+        const body = Buffer.concat(chunks).toString('utf8')
+        fs.mkdirSync(path.dirname(ostadiDebugLogFile), { recursive: true })
+        fs.appendFileSync(ostadiDebugLogFile, `${body.trim()}\n`, 'utf8')
+      } catch {
+        /* ignore */
+      }
+      res.statusCode = 204
+      res.end()
+    })
+  })
+}
+
+/** Writes NDJSON debug lines from the browser (same-origin) — avoids CORS to external ingest. */
+function ostadiDebugSessionLogPlugin(): Plugin {
+  return {
+    name: 'ostadi-debug-session-log',
+    configureServer(server) {
+      attachOstadiDebugLogMiddleware(server)
+    },
+    configurePreviewServer(server) {
+      attachOstadiDebugLogMiddleware(server)
+    },
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -25,6 +67,7 @@ export default defineConfig({
     },
   },
   plugins: [
+    ostadiDebugSessionLogPlugin(),
     react(),
     VitePWA({
       registerType: 'autoUpdate',

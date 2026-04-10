@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { cohortPageSurfaceStyle, DEFAULT_GROUP_ACCENT, normalizeGroupAccent } from '../../lib/groupTheme'
 import type { Message, Profile } from '../../types'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
@@ -17,6 +18,7 @@ export function TeacherGroupStaffPage() {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [convId, setConvId] = useState<string | null>(null)
+  const [cohortAccent, setCohortAccent] = useState<string>(DEFAULT_GROUP_ACCENT)
 
   const reload = useCallback(async () => {
     if (!id || !session?.user?.id) {
@@ -25,6 +27,16 @@ export function TeacherGroupStaffPage() {
     }
     setLoading(true)
     setErr(null)
+    const { data: gAccent, error: gErr } = await supabase
+      .from('groups')
+      .select('accent_color')
+      .eq('id', id)
+      .maybeSingle()
+    setCohortAccent(
+      normalizeGroupAccent(
+        !gErr && gAccent ? (gAccent as { accent_color: string | null }).accent_color : null,
+      ),
+    )
     const { data: conv, error: cErr } = await supabase
       .from('conversations')
       .select('id')
@@ -94,7 +106,7 @@ export function TeacherGroupStaffPage() {
   if (loading) return <Loading />
 
   return (
-    <div className="page">
+    <div className="page page--cohort" style={cohortPageSurfaceStyle(cohortAccent)}>
       <p className="breadcrumb">
         <Link to="/t/groups">الأفواج</Link> / <Link to={`/t/groups/${id}`}>الفوج</Link> / طاقم التدريس
       </p>

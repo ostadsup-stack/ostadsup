@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { cohortListLinkAccentStyle, normalizeGroupAccent } from '../../lib/groupTheme'
 import type { Conversation } from '../../types'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
@@ -11,6 +12,7 @@ export function StudentMessages() {
   const { session } = useAuth()
   const [err, setErr] = useState<string | null>(null)
   const [rows, setRows] = useState<Conversation[]>([])
+  const [accentByGroupId, setAccentByGroupId] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -33,6 +35,7 @@ export function StudentMessages() {
       const ids = [...new Set((parts ?? []).map((p) => p.conversation_id))]
       if (ids.length === 0) {
         setRows([])
+        setAccentByGroupId({})
         setLoading(false)
         return
       }
@@ -43,7 +46,18 @@ export function StudentMessages() {
         .order('created_at', { ascending: false })
       if (!ok) return
       setErr(cErr?.message ?? null)
-      setRows((convs as Conversation[]) ?? [])
+      const list = (convs as Conversation[]) ?? []
+      const gids = [...new Set(list.map((c) => c.group_id).filter(Boolean))]
+      const acc: Record<string, string> = {}
+      if (gids.length > 0) {
+        const { data: gs } = await supabase.from('groups').select('id, accent_color').in('id', gids)
+        for (const row of gs ?? []) {
+          const r = row as { id: string; accent_color: string | null }
+          acc[r.id] = normalizeGroupAccent(r.accent_color)
+        }
+      }
+      setAccentByGroupId(acc)
+      setRows(list)
       setLoading(false)
     })()
     return () => {
@@ -63,8 +77,19 @@ export function StudentMessages() {
         <ul className="list-links">
           {rows.map((c) => (
             <li key={c.id}>
-              <Link to={`/s/messages/${c.id}`}>
+              <Link
+                to={`/s/messages/${c.id}`}
+                className={c.group_id && accentByGroupId[c.group_id] ? 'list-links__link--cohort' : undefined}
+                style={
+                  c.group_id && accentByGroupId[c.group_id]
+                    ? cohortListLinkAccentStyle(accentByGroupId[c.group_id])
+                    : undefined
+                }
+              >
                 {c.subject ?? 'محادثة'}
+                {c.conversation_type === 'student_coordinator' ? (
+                  <span className="badge">طالب — منسق</span>
+                ) : null}
                 <span className="badge">{c.status === 'open' ? 'مفتوحة' : 'مغلقة'}</span>
               </Link>
             </li>

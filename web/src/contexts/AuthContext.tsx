@@ -12,6 +12,25 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import type { Profile } from '../types'
 
+const PROFILE_LOAD_TIMEOUT_MS = 16_000
+const SESSION_GET_TIMEOUT_MS = 12_000
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = window.setTimeout(() => reject(new Error('TIMEOUT')), ms)
+    promise.then(
+      (v) => {
+        window.clearTimeout(id)
+        resolve(v)
+      },
+      (e) => {
+        window.clearTimeout(id)
+        reject(e)
+      },
+    )
+  })
+}
+
 type AuthState = {
   session: Session | null
   profile: Profile | null
@@ -30,56 +49,80 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   /** يمنع حلقة لا نهائية عند استدعاء ensure_my_profile */
   const ensuredForUser = useRef<string | null>(null)
+  /** بعد أول جولة getSession + loadProfile (نجاح أو فشل) */
+  const initialAuthResolved = useRef(false)
+  const sessionRef = useRef<Session | null>(null)
+  sessionRef.current = session
 
-  const loadProfile = useCallback(async (userId: string) => {
-    setError(null)
-    const { data, error: e } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle()
-    if (e) {
-      setError(e.message)
-      setProfile(null)
-      return
-    }
-    if (data) {
-      setProfile(data as Profile)
-      return
-    }
-    // جلسة بدون صف profiles (شائع بعد تأكيد البريد إن فات المستخدم المشغّل)
-    if (ensuredForUser.current !== userId) {
-      ensuredForUser.current = userId
-      const { error: rpcErr } = await supabase.rpc('ensure_my_profile')
-      if (rpcErr) {
-        setError(
-          rpcErr.message.includes('function') && rpcErr.message.includes('does not exist')
-            ? 'نفّذ في Supabase ملف الهجرة ensure_my_profile (أو SQL الدالة ensure_my_profile) ثم حدّث الصفحة.'
-            : rpcErr.message,
-        )
-        setProfile(null)
-        return
-      }
-      const { data: again, error: e2 } = await supabase
+  const loadProfile = useCallback(async (userId: string, opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true
+    if (!silent) setError(null)
+
+    const run = async (): Promise<void> => {
+      const { data, error: e } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle()
-      if (e2) {
-        setError(e2.message)
+      if (e) {
+        setError(e.message)
         setProfile(null)
         return
       }
-      setProfile((again as Profile) ?? null)
-      if (!again) {
-        setError('تعذّر إنشاء الملف الشخصي. جرّب تسجيل الخروج ثم الدخول من جديد.')
+      if (data) {
+        setProfile(data as Profile)
+        return
       }
-      return
+      if (ensuredForUser.current !== userId) {
+        ensuredForUser.current = userId
+        const { error: rpcErr } = await supabase.rpc('ensure_my_profile')
+        if (rpcErr) {
+          setError(
+            rpcErr.message.includes('function') && rpcErr.message.includes('does not exist')
+              ? 'نفّذ في Supabase ملف الهجرة ensure_my_profile (أو SQL الدالة ensure_my_profile) ثم حدّث الصفحة.'
+              : rpcErr.message,
+          )
+          setProfile(null)
+          return
+        }
+        const { data: again, error: e2 } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle()
+        if (e2) {
+          setError(e2.message)
+          setProfile(null)
+          return
+        }
+        setProfile((again as Profile) ?? null)
+        if (!again) {
+          setError('تعذّر إنشاء الملف الشخصي. جرّب تسجيل الخروج ثم الدخول من جديد.')
+        }
+        return
+      }
+      setProfile(null)
+      setError(
+        'لا يوجد ملف شخصي مرتبط بحسابك. سجّل الخروج ثم أعد الدخول، أو راجع إعداد قاعدة البيانات.',
+      )
     }
-    setProfile(null)
-    setError(
-      'لا يوجد ملف شخصي مرتبط بحسابك. سجّل الخروج ثم أعد الدخول، أو راجع إعداد قاعدة البيانات.',
-    )
+
+    try {
+      await withTimeout(run(), PROFILE_LOAD_TIMEOUT_MS)
+    } catch (err) {
+      const timedOut = err instanceof Error && err.message === 'TIMEOUT'
+      if (timedOut) {
+        if (!silent) {
+          setError(
+            'تأخر الاتصال بالخادم أو انقطع. تحقق من الشبكة ثم حدّث الصفحة أو أعد المحاولة لاحقاً.',
+          )
+          setProfile(null)
+        }
+      } else if (!silent && err instanceof Error) {
+        setError(err.message)
+        setProfile(null)
+      }
+    }
   }, [])
 
   const refreshProfile = useCallback(async () => {
@@ -91,15 +134,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await loadProfile(uid)
   }, [loadProfile, session?.user?.id])
 
+  const resumeAuthRefresh = useCallback(() => {
+    try {
+      const auth = supabase.auth as unknown as { startAutoRefresh?: () => void }
+      auth.startAutoRefresh?.()
+    } catch {
+      /* ignore */
+    }
+    void (async () => {
+      let uid: string | undefined
+      try {
+        const { data } = await withTimeout(supabase.auth.getSession(), SESSION_GET_TIMEOUT_MS)
+        uid = data.session?.user?.id
+        setSession(data.session)
+      } catch {
+        uid = sessionRef.current?.user?.id
+      }
+      if (!uid) {
+        if (initialAuthResolved.current) setLoading(false)
+        return
+      }
+      await loadProfile(uid, { silent: true }).finally(() => {
+        if (initialAuthResolved.current) setLoading(false)
+      })
+    })()
+  }, [loadProfile])
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') resumeAuthRefresh()
+    }
+    const onOnline = () => resumeAuthRefresh()
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('online', onOnline)
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('online', onOnline)
+    }
+  }, [resumeAuthRefresh])
+
   useEffect(() => {
     let cancelled = false
+    initialAuthResolved.current = false
     ;(async () => {
-      const { data } = await supabase.auth.getSession()
-      if (cancelled) return
-      setSession(data.session)
-      if (data.session?.user?.id) await loadProfile(data.session.user.id)
-      else setProfile(null)
-      setLoading(false)
+      try {
+        const { data } = await withTimeout(supabase.auth.getSession(), SESSION_GET_TIMEOUT_MS)
+        if (cancelled) return
+        setSession(data.session)
+        if (data.session?.user?.id) await loadProfile(data.session.user.id)
+        else setProfile(null)
+      } catch {
+        if (!cancelled) {
+          setError(
+            'تعذر التحقق من الجلسة (انتهت مهلة الاتصال). تحقق من الشبكة ثم حدّث الصفحة.',
+          )
+          setSession(null)
+          setProfile(null)
+        }
+      } finally {
+        if (!cancelled) {
+          initialAuthResolved.current = true
+          setLoading(false)
+        }
+      }
     })()
     const {
       data: { subscription },

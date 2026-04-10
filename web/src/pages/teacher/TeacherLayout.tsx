@@ -18,6 +18,7 @@ const TEACHER_MENU_ID = 'teacher-shell-nav-menu'
 const TEACHER_MENU_LINKS = [
   { to: '/t/account', label: 'حسابي' },
   { to: '/t/schedule', label: 'الحصص' },
+  { to: '/t/schedule-requests', label: 'طلبات الحصص' },
   { to: '/t/groups', label: 'الأفواج' },
   { to: '/t/inbox', label: 'الرسائل' },
   { to: '/t/books', label: 'مكتبتي' },

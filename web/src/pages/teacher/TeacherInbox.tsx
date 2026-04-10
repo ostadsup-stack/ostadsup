@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { fetchWorkspaceForTeacher } from '../../lib/workspace'
+import { cohortListLinkAccentStyle, normalizeGroupAccent } from '../../lib/groupTheme'
 import type { Conversation } from '../../types'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
@@ -12,12 +13,14 @@ export function TeacherInbox() {
   const { session } = useAuth()
   const [err, setErr] = useState<string | null>(null)
   const [rows, setRows] = useState<Conversation[]>([])
+  const [accentByGroupId, setAccentByGroupId] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let ok = true
     ;(async () => {
       if (!session?.user?.id) {
+        setAccentByGroupId({})
         setLoading(false)
         return
       }
@@ -25,6 +28,8 @@ export function TeacherInbox() {
       if (!ok) return
       if (wsFetchErr || !workspace) {
         setErr(wsFetchErr?.message ?? 'لا مساحة')
+        setRows([])
+        setAccentByGroupId({})
         setLoading(false)
         return
       }
@@ -37,6 +42,7 @@ export function TeacherInbox() {
       if (convListErr) {
         setErr(convListErr.message)
         setRows([])
+        setAccentByGroupId({})
         setLoading(false)
         return
       }
@@ -64,6 +70,19 @@ export function TeacherInbox() {
         merged.push(c)
       }
       merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      const convGroupIds = [...new Set(merged.map((c) => c.group_id).filter(Boolean))]
+      const acc: Record<string, string> = {}
+      if (convGroupIds.length > 0) {
+        const { data: gs } = await supabase
+          .from('groups')
+          .select('id, accent_color')
+          .in('id', convGroupIds)
+        for (const row of gs ?? []) {
+          const r = row as { id: string; accent_color: string | null }
+          acc[r.id] = normalizeGroupAccent(r.accent_color)
+        }
+      }
+      setAccentByGroupId(acc)
       setErr(null)
       setRows(merged)
       setLoading(false)
@@ -85,7 +104,15 @@ export function TeacherInbox() {
         <ul className="list-links">
           {rows.map((c) => (
             <li key={c.id}>
-              <Link to={`/t/inbox/${c.id}`}>
+              <Link
+                to={`/t/inbox/${c.id}`}
+                className={c.group_id && accentByGroupId[c.group_id] ? 'list-links__link--cohort' : undefined}
+                style={
+                  c.group_id && accentByGroupId[c.group_id]
+                    ? cohortListLinkAccentStyle(accentByGroupId[c.group_id])
+                    : undefined
+                }
+              >
                 {c.subject ?? 'بدون عنوان'}
                 <span className="badge">
                   {c.conversation_type === 'teacher_staff'
