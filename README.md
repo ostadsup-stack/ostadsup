@@ -42,6 +42,11 @@ npm run build
 npm run preview
 ```
 
+## النشر على Vercel
+
+- في إعدادات المشروع يمكن ترك **Root Directory** على جذر المستودع (`.`): الملف [`vercel.json`](vercel.json) في الجذر يشغّل `npm ci` و`npm run build` داخل `web/` ويخرج من `web/dist`.
+- إن كان المشروع مضبوطاً مسبقاً على **Root Directory = `web`**، يكفي إبقاء ذلك؛ تأكد من وجود المتغيرات `VITE_SUPABASE_URL` و`VITE_SUPABASE_ANON_KEY` في **Settings → Environment Variables** (لا ترفع `.env` إلى GitHub).
+
 ## ملاحظات
 
 - **المنسق**: الأستاذ يرقّي عضواً من صفحة الفوج (زر «جعله منسقاً»).
