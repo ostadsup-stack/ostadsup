@@ -5,13 +5,14 @@ import { supabase } from '../../lib/supabase'
 import {
   IconBell,
   IconBook,
+  IconCalendar,
   IconHome,
   IconInbox,
   IconLayout,
   IconLogOut,
 } from '../../components/NavIcons'
 import { ThemeToggle } from '../../components/ThemeToggle'
-import { fetchActiveStudentMemberships, filterStudentRoleRows } from '../../lib/studentGroup'
+import { fetchActiveStudentMemberships, filterStudentRoleRows, formatStudyLevel } from '../../lib/studentGroup'
 
 const STUDENT_MENU_ID = 'student-shell-profile-menu'
 
@@ -23,7 +24,19 @@ export function StudentLayout() {
     studentNumber: string | null
     primaryGroupId: string | null
     showCoordBadge: boolean
-  }>({ studentNumber: null, primaryGroupId: null, showCoordBadge: false })
+    groupSummary: {
+      group_name: string | null
+      academic_year: string | null
+      faculty: string | null
+      subject_name: string | null
+      study_level: string | null
+    } | null
+  }>({
+    studentNumber: null,
+    primaryGroupId: null,
+    showCoordBadge: false,
+    groupSummary: null,
+  })
   const menuWrapRef = useRef<HTMLDivElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const firstMenuLinkRef = useRef<HTMLAnchorElement>(null)
@@ -54,7 +67,12 @@ export function StudentLayout() {
     let ok = true
     const uid = session?.user?.id
     if (!uid) {
-      setStudentMeta({ studentNumber: null, primaryGroupId: null, showCoordBadge: false })
+      setStudentMeta({
+        studentNumber: null,
+        primaryGroupId: null,
+        showCoordBadge: false,
+        groupSummary: null,
+      })
       return
     }
     ;(async () => {
@@ -62,12 +80,23 @@ export function StudentLayout() {
       if (!ok) return
       const students = filterStudentRoleRows(rows)
       const coords = rows.filter((r) => r.role_in_group === 'coordinator')
-      const primaryGroupId =
-        students[0]?.group_id ?? coords[0]?.group_id ?? rows[0]?.group_id ?? null
+      const primaryRow = students[0] ?? coords[0] ?? rows[0]
+      const primaryGroupId = primaryRow?.group_id ?? null
+      const g = primaryRow?.groups
       setStudentMeta({
         studentNumber: students[0]?.student_number ?? null,
         primaryGroupId,
         showCoordBadge: coords.length > 0,
+        groupSummary:
+          g != null
+            ? {
+                group_name: g.group_name ?? null,
+                academic_year: g.academic_year ?? null,
+                faculty: g.faculty ?? null,
+                subject_name: g.subject_name ?? null,
+                study_level: g.study_level ?? null,
+              }
+            : null,
       })
     })()
     return () => {
@@ -159,9 +188,9 @@ export function StudentLayout() {
                   id={STUDENT_MENU_ID}
                   className="teacher-shell__menu teacher-shell__menu--student"
                   role="region"
-                  aria-label="بيانات الطالب"
+                  aria-label="حسابي وإعدادات الطالب"
                 >
-                  <p className="teacher-shell__menu-heading">بياناتي</p>
+                  <p className="teacher-shell__menu-heading">حسابي</p>
                   <div className="student-shell__data">
                     <div className="student-shell__data-row">
                       <span className="student-shell__data-label">الاسم الكامل</span>
@@ -192,7 +221,51 @@ export function StudentLayout() {
                       </p>
                     </div>
                   </div>
+
+                  {studentMeta.groupSummary ? (
+                    <>
+                      <p className="teacher-shell__menu-heading student-shell__menu-subheading">من الفوج</p>
+                      <div className="student-shell__data">
+                        <div className="student-shell__data-row">
+                          <span className="student-shell__data-label">اسم الفوج</span>
+                          <p className="student-shell__data-value">
+                            {studentMeta.groupSummary.group_name?.trim() || '—'}
+                          </p>
+                        </div>
+                        <div className="student-shell__data-row">
+                          <span className="student-shell__data-label">السنة الدراسية</span>
+                          <p className="student-shell__data-value">
+                            {studentMeta.groupSummary.academic_year?.trim() || '—'}
+                          </p>
+                        </div>
+                        <div className="student-shell__data-row">
+                          <span className="student-shell__data-label">المستوى الدراسي</span>
+                          <p className="student-shell__data-value">
+                            {formatStudyLevel(studentMeta.groupSummary.study_level)}
+                          </p>
+                        </div>
+                        <div className="student-shell__data-row">
+                          <span className="student-shell__data-label">المادة / المقرر</span>
+                          <p className="student-shell__data-value">
+                            {studentMeta.groupSummary.subject_name?.trim() || '—'}
+                          </p>
+                        </div>
+                        <div className="student-shell__data-row">
+                          <span className="student-shell__data-label">الكلية / الشعبة</span>
+                          <p className="student-shell__data-value">
+                            {studentMeta.groupSummary.faculty?.trim() || '—'}
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+
                   <div className="student-shell__menu-divider" />
+                  <p className="teacher-shell__menu-heading student-shell__menu-subheading">إعدادات</p>
+                  <div className="student-shell__settings-row">
+                    <span className="student-shell__data-label">المظهر</span>
+                    <ThemeToggle />
+                  </div>
                   <Link
                     ref={firstMenuLinkRef}
                     to="/s/account"
@@ -209,13 +282,22 @@ export function StudentLayout() {
                     الانضمام لفوج
                   </Link>
                   {studentMeta.primaryGroupId ? (
-                    <Link
-                      to={`/s/groups/${studentMeta.primaryGroupId}`}
-                      className="teacher-shell__menu-link"
-                      onClick={() => setMenuOpen(false)}
-                    >
-                      صفحة فوجي
-                    </Link>
+                    <>
+                      <Link
+                        to={`/s/groups/${studentMeta.primaryGroupId}`}
+                        className="teacher-shell__menu-link"
+                        onClick={() => setMenuOpen(false)}
+                      >
+                        صفحة فوجي
+                      </Link>
+                      <Link
+                        to={`/s/groups/${studentMeta.primaryGroupId}#leave-group`}
+                        className="teacher-shell__menu-link teacher-shell__menu-link--danger"
+                        onClick={() => setMenuOpen(false)}
+                      >
+                        مغادرة الفوج
+                      </Link>
+                    </>
                   ) : null}
                 </div>
               ) : null}
@@ -261,11 +343,15 @@ export function StudentLayout() {
         </NavLink>
         <NavLink to="/s/posts" className={bottomNavClass}>
           <IconLayout className="teacher-bottom-nav__icon" />
-          <span>منشورات الأساتذة</span>
+          <span>المنشورات</span>
+        </NavLink>
+        <NavLink to="/s/schedule" className={bottomNavClass}>
+          <IconCalendar className="teacher-bottom-nav__icon" />
+          <span>جدول الحصص</span>
         </NavLink>
         <NavLink to="/s/materials" className={bottomNavClass}>
           <IconBook className="teacher-bottom-nav__icon" />
-          <span>المواد العلمية</span>
+          <span>المواد</span>
         </NavLink>
       </nav>
     </div>

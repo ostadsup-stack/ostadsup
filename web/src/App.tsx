@@ -30,6 +30,7 @@ import { StudentThread } from './pages/student/StudentThread'
 import { StudentNotifications } from './pages/student/StudentNotifications'
 import { StudentPostsPage } from './pages/student/StudentPostsPage'
 import { StudentMaterialsPage } from './pages/student/StudentMaterialsPage'
+import { StudentSchedulePage } from './pages/student/StudentSchedulePage'
 import { StudentAccountPage } from './pages/student/StudentAccountPage'
 import { PublicTeacherSite } from './pages/public/PublicTeacherSite'
 
@@ -138,6 +139,7 @@ function AppRoutes() {
         <Route path="messages/:id" element={<StudentThread />} />
         <Route path="notifications" element={<StudentNotifications />} />
         <Route path="posts" element={<StudentPostsPage />} />
+        <Route path="schedule" element={<StudentSchedulePage />} />
         <Route path="materials" element={<StudentMaterialsPage />} />
         <Route path="account" element={<StudentAccountPage />} />
       </Route>

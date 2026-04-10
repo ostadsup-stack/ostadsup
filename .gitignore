@@ -1,3 +1,7 @@
 .cursor/
 .env
-ostadsup/supabase/.temp/
+# Supabase CLI writes version pins here; do not commit
+**/supabase/.temp/
+.supabase/
+supabase/.temp/
+supabase/storage/

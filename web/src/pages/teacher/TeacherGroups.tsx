@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { fetchWorkspaceForTeacher } from '../../lib/workspace'
 import { randomJoinCode } from '../../lib/codes'
 import { buildSuggestedCohortCode } from '../../lib/cohortCode'
-import { localTodayBoundsIso, studyLevelLabelAr } from '../../lib/teacherGroups'
+import { localTodayBoundsIso, normalizeTeacherGroupSummaryRows, studyLevelLabelAr } from '../../lib/teacherGroups'
 import type { StudyLevel, TeacherGroupSummaryRow } from '../../types'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
@@ -13,23 +13,6 @@ import { EmptyState } from '../../components/EmptyState'
 import { PageHeader } from '../../components/PageHeader'
 import { DEFAULT_GROUP_ACCENT } from '../../lib/groupTheme'
 import { rgbaFromHex } from '../../lib/colorContrast'
-
-function normalizeSummaryRows(raw: unknown): TeacherGroupSummaryRow[] {
-  const list = (raw as object[] | null) ?? []
-  return list.map((row) => {
-    const r = row as TeacherGroupSummaryRow & {
-      unread_coordinator_count?: number
-      accent_color?: string | null
-      coordinator_name?: string | null
-    }
-    return {
-      ...r,
-      unread_coordinator_count: Number(r.unread_coordinator_count ?? 0),
-      accent_color: r.accent_color ?? null,
-      coordinator_name: r.coordinator_name?.trim() || null,
-    }
-  })
-}
 
 const emptyCreateForm = {
   group_name: '',
@@ -84,7 +67,7 @@ export function TeacherGroups() {
       setRows([])
     } else {
       setErr(null)
-      setRows(normalizeSummaryRows(data))
+      setRows(normalizeTeacherGroupSummaryRows(data))
     }
     setLoading(false)
   }, [session?.user?.id])

@@ -39,3 +39,15 @@ export async function fetchWorkspaceSlug(
   if (error || !data) return null
   return (data as { slug: string }).slug ?? null
 }
+
+const STUDY_LEVEL_AR: Record<string, string> = {
+  licence: 'إجازة',
+  master: 'ماستر',
+  doctorate: 'دكتوراه',
+}
+
+/** تسمية عربية لمستوى الدراسة من عمود groups.study_level */
+export function formatStudyLevel(level: string | null | undefined): string {
+  if (level == null || level === '') return '—'
+  return STUDY_LEVEL_AR[level] ?? level
+}

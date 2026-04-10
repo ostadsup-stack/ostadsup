@@ -1,4 +1,4 @@
-import type { StudyLevel } from '../types'
+import type { StudyLevel, TeacherGroupSummaryRow } from '../types'
 
 /** تسمية المستوى الدراسي للعرض في قوائم الأفواج */
 export function studyLevelLabelAr(level: StudyLevel | string | null | undefined): string {
@@ -21,6 +21,24 @@ export type TeacherScheduleQuickGroup = {
   group_id: string
   group_name: string
   accent_color: string | null
+}
+
+/** تطبيع صفوف RPC `teacher_group_list_summaries` للعرض في الواجهة. */
+export function normalizeTeacherGroupSummaryRows(raw: unknown): TeacherGroupSummaryRow[] {
+  const list = (raw as object[] | null) ?? []
+  return list.map((row) => {
+    const r = row as TeacherGroupSummaryRow & {
+      unread_coordinator_count?: number
+      accent_color?: string | null
+      coordinator_name?: string | null
+    }
+    return {
+      ...r,
+      unread_coordinator_count: Number(r.unread_coordinator_count ?? 0),
+      accent_color: r.accent_color ?? null,
+      coordinator_name: r.coordinator_name?.trim() || null,
+    }
+  })
 }
 
 /** Minimal fields from `teacher_group_list_summaries` for schedule quick links. */

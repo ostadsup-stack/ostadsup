@@ -424,6 +424,22 @@ a:hover {
   flex-shrink: 0;
 }
 
+.student-shell__menu-subheading {
+  margin-top: 0.35rem;
+}
+
+.student-shell__settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0 0.35rem;
+}
+
+.teacher-shell__menu-link--danger {
+  color: var(--color-danger, #b91c1c);
+}
+
 .student-home__section-head {
   display: flex;
   flex-wrap: wrap;
@@ -439,6 +455,97 @@ a:hover {
 
 .student-home__warn {
   margin-bottom: 1rem;
+}
+
+.student-home__join-cta {
+  margin-bottom: 1rem;
+  max-width: 26rem;
+}
+
+.student-home__join-cta-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.student-home__join-cta-text {
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+.student-home__join-cta-btn {
+  display: inline-flex;
+}
+
+.student-home__group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.student-home__next-slot {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  background: var(--color-surface);
+}
+
+.student-home__next-slot-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.student-home__next-slot-body {
+  margin: 0;
+}
+
+.student-home__next-slot-line {
+  margin: 0 0 0.25rem;
+}
+
+.student-home__next-slot-link {
+  margin: 0.5rem 0 0;
+}
+
+.student-home__preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.student-home__preview-link {
+  display: block;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  text-decoration: none;
+  color: inherit;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.student-home__preview-link:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  background: var(--color-surface-hover);
+}
+
+.student-home__preview-meta {
+  display: block;
+  font-weight: 700;
+  font-size: 0.88rem;
+  margin-bottom: 0.2rem;
+}
+
+.student-home__preview-snippet {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  margin-bottom: 0.25rem;
+  line-height: 1.35;
 }
 
 .student-group__teachers {
@@ -3221,6 +3328,54 @@ select:focus-visible {
 
 .teacher-home__public-page-label {
   color: var(--color-heading);
+}
+
+.pill--compact {
+  margin-inline-start: 0;
+  font-size: 0.62rem;
+  padding: 0.1rem 0.38rem;
+}
+
+.teacher-home__pill-misir {
+  background: color-mix(in srgb, var(--color-coord) 18%, transparent);
+  color: var(--color-coord);
+  border-color: color-mix(in srgb, var(--color-coord) 35%, transparent);
+}
+
+.teacher-home__pill-adi {
+  background: var(--color-surface-hover);
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+}
+
+.teacher-home__groups-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.teacher-home__groups-hint {
+  margin: 0 0 0.75rem;
+}
+
+.teacher-home__groups-sheet {
+  margin-top: 0.25rem;
+}
+
+.teacher-home__today-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.teacher-home__today-link:hover {
+  text-decoration: underline;
+}
+
+.teacher-home__coord-msg-badge {
+  cursor: default;
 }
 
 /* بطاقة حساب الأستاذ */

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
@@ -9,8 +9,18 @@ import {
   startOfMonday,
   fetchTeacherWeekScheduleRows,
   emptyScheduleOverlapAudit,
+  sameLocalDay,
   type ScheduleWeekEventRow,
 } from '../../lib/teacherWeekSchedule'
+import { scheduleEventCreatorLabel } from '../../lib/scheduleConflict'
+import {
+  localTodayBoundsIso,
+  normalizeTeacherGroupSummaryRows,
+  studyLevelLabelAr,
+} from '../../lib/teacherGroups'
+import type { TeacherGroupSummaryRow } from '../../types'
+import { DEFAULT_GROUP_ACCENT } from '../../lib/groupTheme'
+import { rgbaFromHex } from '../../lib/colorContrast'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { ScheduleOverlapBanners } from '../../components/ScheduleOverlapBanners'
@@ -31,6 +41,21 @@ export function TeacherDashboard() {
   const [schedLoading, setSchedLoading] = useState(false)
   const [schedErr, setSchedErr] = useState<string | null>(null)
   const [schedOverlapAudit, setSchedOverlapAudit] = useState(emptyScheduleOverlapAudit)
+
+  const [groupRows, setGroupRows] = useState<TeacherGroupSummaryRow[]>([])
+  const [groupsListErr, setGroupsListErr] = useState<string | null>(null)
+  const [groupsListLoading, setGroupsListLoading] = useState(false)
+
+  const [todayRows, setTodayRows] = useState<ScheduleWeekEventRow[]>([])
+  const [todayErr, setTodayErr] = useState<string | null>(null)
+  const [todayLoading, setTodayLoading] = useState(false)
+
+  const todayNow = useMemo(() => new Date(), [])
+
+  const todayEvents = useMemo(() => {
+    const now = new Date()
+    return todayRows.filter((ev) => sameLocalDay(new Date(ev.starts_at), now))
+  }, [todayRows])
 
   useEffect(() => {
     let ok = true
@@ -75,6 +100,53 @@ export function TeacherDashboard() {
       ok = false
     }
   }, [session?.user?.id])
+
+  useEffect(() => {
+    let ok = true
+    const uid = session?.user?.id
+    if (!uid || !workspaceId) {
+      setGroupRows([])
+      setTodayRows([])
+      setGroupsListLoading(false)
+      setTodayLoading(false)
+      return
+    }
+    ;(async () => {
+      setGroupsListLoading(true)
+      setTodayLoading(true)
+      setGroupsListErr(null)
+      setTodayErr(null)
+      const bounds = localTodayBoundsIso()
+      const n = new Date()
+      const dayStart = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 0, 0, 0, 0)
+      const dayEnd = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 23, 59, 59, 999)
+      const [rpcRes, schedRes] = await Promise.all([
+        supabase.rpc('teacher_group_list_summaries', {
+          p_today_start: bounds.p_today_start,
+          p_today_end: bounds.p_today_end,
+        }),
+        fetchTeacherWeekScheduleRows(supabase, uid, workspaceId, dayStart, dayEnd),
+      ])
+      if (!ok) return
+      setGroupsListLoading(false)
+      setTodayLoading(false)
+      if (rpcRes.error) {
+        setGroupsListErr(rpcRes.error.message)
+        setGroupRows([])
+      } else {
+        setGroupRows(normalizeTeacherGroupSummaryRows(rpcRes.data))
+      }
+      if (schedRes.error) {
+        setTodayErr(schedRes.error)
+        setTodayRows([])
+      } else {
+        setTodayRows(schedRes.rows)
+      }
+    })()
+    return () => {
+      ok = false
+    }
+  }, [session?.user?.id, workspaceId])
 
   useEffect(() => {
     let ok = true
@@ -160,6 +232,142 @@ export function TeacherDashboard() {
         <Loading label="جاري التحميل…" />
       ) : (
         <>
+          {workspaceId ? (
+            <>
+              <section className="section teacher-home__groups" aria-labelledby="teacher-home-groups-h">
+                <div className="teacher-home__groups-head">
+                  <h2 id="teacher-home-groups-h" className="library-section__title">
+                    لائحة الأفواج
+                  </h2>
+                  <Link to="/t/groups" className="btn btn--ghost btn--small">
+                    إدارة الأفواج
+                  </Link>
+                </div>
+                <p className="muted small teacher-home__groups-hint">
+                  كل سطر: اسم الفوج، المستوى، عادي أو ميسر (وجود منسّق)، اسم المنسق مع تنبيه الرسائل غير المقروءة.
+                </p>
+                <ErrorBanner message={groupsListErr} />
+                {groupsListLoading ? (
+                  <Loading label="جاري تحميل الأفواج…" />
+                ) : groupRows.length === 0 ? (
+                  <p className="muted">لا توجد أفواج بعد. أنشئ فوجاً من «إدارة الأفواج».</p>
+                ) : (
+                  <div className="teacher-groups__sheet teacher-home__groups-sheet">
+                    <div className="teacher-groups__thead teacher-home__groups-thead" aria-hidden>
+                      <span className="teacher-groups__th teacher-groups__th--accent" />
+                      <span className="teacher-groups__th">اسم الفوج</span>
+                      <span className="teacher-groups__th">المستوى</span>
+                      <span className="teacher-groups__th">عادي / ميسر</span>
+                      <span className="teacher-groups__th">المنسق</span>
+                      <span className="teacher-groups__th teacher-groups__th--meta" />
+                    </div>
+                    <ul className="teacher-groups__list teacher-groups__list--lines">
+                      {groupRows.map((r) => {
+                        const accent =
+                          r.accent_color && /^#[0-9A-Fa-f]{6}$/.test(r.accent_color)
+                            ? r.accent_color
+                            : DEFAULT_GROUP_ACCENT
+                        const coordUnread = r.unread_coordinator_count
+                        const rowBg = rgbaFromHex(accent, 0.08) ?? undefined
+                        const hasCoordinator = Boolean(r.coordinator_name?.trim())
+                        return (
+                          <li key={r.group_id}>
+                            <Link
+                              to={`/t/groups/${r.group_id}`}
+                              className="teacher-groups__row-line"
+                              style={{ backgroundColor: rowBg }}
+                            >
+                              <span
+                                className="teacher-groups__row-accent teacher-groups__row-accent--line"
+                                style={{ backgroundColor: accent }}
+                                aria-hidden
+                              />
+                              <span className="teacher-groups__cell teacher-groups__cell--name">{r.group_name}</span>
+                              <span className="teacher-groups__cell muted">{studyLevelLabelAr(r.study_level)}</span>
+                              <span className="teacher-groups__cell teacher-home__groups-mode" title="وجود منسّق للفوج">
+                                {hasCoordinator ? (
+                                  <span className="pill pill--compact teacher-home__pill-misir">ميسر</span>
+                                ) : (
+                                  <span className="pill pill--compact teacher-home__pill-adi">عادي</span>
+                                )}
+                              </span>
+                              <span className="teacher-groups__cell teacher-groups__cell--coord" title="منسق الفوج">
+                                <span className="teacher-groups__coord-name">
+                                  {r.coordinator_name?.trim() || '—'}
+                                </span>
+                                {coordUnread > 0 ? (
+                                  <span
+                                    className="teacher-groups__coord-unread teacher-groups__coord-unread--inline teacher-home__coord-msg-badge"
+                                    title="رسائل غير مقروءة من المنسق — افتح الصندوق من الأعلى أو من المؤشرات أسفل الصفحة"
+                                  >
+                                    {coordUnread > 99 ? '99+' : coordUnread}
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span className="teacher-groups__cell teacher-groups__cell--meta">
+                                {r.is_owner === false ? (
+                                  <span className="pill teacher-groups__compact-pill">مرتبط</span>
+                                ) : null}
+                              </span>
+                            </Link>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                )}
+              </section>
+
+              <section className="section teacher-home__today" aria-labelledby="teacher-home-today-h">
+                <div className="teacher-home__groups-head">
+                  <h2 id="teacher-home-today-h" className="library-section__title">
+                    حصص اليوم
+                  </h2>
+                  <Link to="/t/schedule" className="btn btn--ghost btn--small">
+                    جدول الأسبوع
+                  </Link>
+                </div>
+                <ErrorBanner message={todayErr} />
+                {todayLoading ? (
+                  <Loading label="جاري تحميل حصص اليوم…" />
+                ) : todayEvents.length === 0 ? (
+                  <p className="muted">لا حصص مجدولة اليوم ({todayNow.toLocaleDateString('ar-MA')}).</p>
+                ) : (
+                  <ul className="schedule-list">
+                    {todayEvents.map((ev) => (
+                      <li key={ev.id} className="schedule-list__item">
+                        <Link
+                          to={`/t/groups/${ev.group_id}?event=${encodeURIComponent(ev.id)}`}
+                          className="teacher-home__today-link"
+                        >
+                          <strong>
+                            {ev.subject_name ?? (ev.event_type === 'seminar' ? 'ندوة' : 'حصة')}
+                          </strong>
+                          {' — '}
+                          {ev.groups?.group_name ? (
+                            <span className="muted">«{ev.groups.group_name}»</span>
+                          ) : null}
+                          {' — '}
+                          {scheduleEventCreatorLabel(ev)} —{' '}
+                          {new Date(ev.starts_at).toLocaleTimeString('ar-MA', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}{' '}
+                          →{' '}
+                          {new Date(ev.ends_at).toLocaleTimeString('ar-MA', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}{' '}
+                          <span className="muted">({ev.mode === 'online' ? 'عن بُعد' : 'حضوري'})</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </>
+          ) : null}
+
           <section className="teacher-home__identity-card" aria-labelledby="teacher-home-profile-heading">
             <h2 id="teacher-home-profile-heading" className="visually-hidden">
               بطاقة التعريف

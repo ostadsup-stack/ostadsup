@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import type { Group, Material, Post, ScheduleEvent } from '../../types'
@@ -24,6 +24,7 @@ export function StudentGroupPage() {
   const { id } = useParams<{ id: string }>()
   const { session } = useAuth()
   const nav = useNavigate()
+  const location = useLocation()
   const [err, setErr] = useState<string | null>(null)
   const [group, setGroup] = useState<Group | null>(null)
   const [role, setRole] = useState<string>('')
@@ -190,6 +191,14 @@ export function StudentGroupPage() {
     const ids = visiblePeers.map((p) => p.user_id)
     setSelectedStudentId((prev) => (prev && ids.includes(prev) ? prev : ids[0] ?? ''))
   }, [role, visiblePeers])
+
+  useEffect(() => {
+    if (location.hash !== '#leave-group' || loading) return
+    const t = window.setTimeout(() => {
+      document.getElementById('leave-group')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 150)
+    return () => window.clearTimeout(t)
+  }, [location.hash, loading])
 
   async function downloadMaterial(m: Material) {
     if (!m.file_path) return
@@ -359,7 +368,7 @@ export function StudentGroupPage() {
         {role === 'coordinator' ? <span className="pill pill--coord">منسق</span> : null}
       </h1>
       {role === 'student' ? (
-        <p>
+        <p id="leave-group">
           <button type="button" className="btn btn--ghost btn--small" disabled={leaveBusy} onClick={() => void leaveGroup()}>
             {leaveBusy ? 'جاري المغادرة…' : 'مغادرة الفوج'}
           </button>
