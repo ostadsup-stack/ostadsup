@@ -10,8 +10,13 @@ import { nextEndAfterStartChange, scheduleFieldsFromIso } from '../../lib/schedu
 import {
   findOverlappingScheduleEvents,
   isPostgresExclusionViolation,
+  isScheduleStartInPast,
+  isScheduleStartInPastViolation,
+  isTeacherCrossGroupOverlapViolation,
+  scheduleCrossGroupOverlapUserMessage,
   scheduleEventCreatorLabel,
   scheduleExclusionUserMessage,
+  scheduleStartInPastUserMessage,
 } from '../../lib/scheduleConflict'
 import type { Group, GroupMember, Material, Post, ScheduleEvent, StudyLevel } from '../../types'
 import { buildSuggestedCohortCode } from '../../lib/cohortCode'
@@ -46,7 +51,7 @@ export function TeacherGroupDetail() {
   const location = useLocation()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { session } = useAuth()
+  const { session, profile } = useAuth()
   const [err, setErr] = useState<string | null>(null)
   const [group, setGroup] = useState<Group | null>(null)
   const [groupOwnerWorkspaceId, setGroupOwnerWorkspaceId] = useState<string | null>(null)
@@ -60,6 +65,8 @@ export function TeacherGroupDetail() {
   const [posts, setPosts] = useState<Post[]>([])
   const [materials, setMaterials] = useState<Material[]>([])
   const [events, setEvents] = useState<ScheduleEvent[]>([])
+  /** كل حصصي في مساحة العمل (للكشف عن تداخل بين فوجين) */
+  const [myWorkspaceScheduleMine, setMyWorkspaceScheduleMine] = useState<ScheduleEvent[]>([])
   const [members, setMembers] = useState<GroupMember[]>([])
   const [memberContacts, setMemberContacts] = useState<Record<string, MemberContactInfo>>({})
   const [loading, setLoading] = useState(true)
@@ -93,6 +100,12 @@ export function TeacherGroupDetail() {
   const [revokeBusy, setRevokeBusy] = useState(false)
   const [schedulePanelOpen, setSchedulePanelOpen] = useState(false)
   const [memberBusyId, setMemberBusyId] = useState<string | null>(null)
+  /** تداخل حصص لنفس الأستاذ بين فوجين — موافقة صريحة ثم teacher_cross_group_overlap_ack (مثل منطق طلب الموافقة لنفس الفوج) */
+  const [crossGroupOverlapCard, setCrossGroupOverlapCard] = useState<{
+    kind: 'new' | 'edit'
+    otherSessions: ScheduleEvent[]
+  } | null>(null)
+  const [crossGroupOverlapSaving, setCrossGroupOverlapSaving] = useState(false)
 
   const cohortAccentHex = useMemo(() => {
     if (!group) return DEFAULT_GROUP_ACCENT
@@ -198,6 +211,37 @@ export function TeacherGroupDetail() {
     })
   }, [location.hash, loading])
 
+  useEffect(() => {
+    if (location.hash !== '#wall' || loading) return
+    const el = document.getElementById('teacher-group-wall')
+    if (!el) return
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [location.hash, loading])
+
+  useEffect(() => {
+    if (loading) return
+    if (searchParams.get('compose') !== 'announce') return
+    if (isGroupOwner) {
+      setPostForm((f) => ({ ...f, scope: 'workspace' }))
+    }
+    const el = document.getElementById('teacher-group-wall')
+    if (el) {
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('compose')
+        return next
+      },
+      { replace: true },
+    )
+  }, [loading, searchParams, isGroupOwner, setSearchParams])
+
   async function reload() {
     if (!id || !session?.user?.id) {
       setLoading(false)
@@ -262,7 +306,7 @@ export function TeacherGroupDetail() {
       setTeacherLinkSecret(null)
     }
 
-    const [p, m, e, mem] = await Promise.all([
+    const [p, m, e, mem, mine] = await Promise.all([
       supabase
         .from('posts')
         .select('*')
@@ -282,12 +326,24 @@ export function TeacherGroupDetail() {
         .eq('group_id', id)
         .order('starts_at', { ascending: true }),
       supabase.from('group_members').select('*').eq('group_id', id),
+      supabase
+        .from('schedule_events')
+        .select('id, group_id, starts_at, ends_at, status, created_by, event_type, mode')
+        .eq('workspace_id', g.workspace_id)
+        .eq('created_by', session.user.id),
     ])
-    const batchErr = p.error?.message ?? m.error?.message ?? e.error?.message ?? mem.error?.message ?? null
+    const batchErr =
+      p.error?.message ??
+      m.error?.message ??
+      e.error?.message ??
+      mem.error?.message ??
+      mine.error?.message ??
+      null
     setPosts((p.data as Post[]) ?? [])
     setMaterials((m.data as Material[]) ?? [])
     setEvents((e.data as ScheduleEvent[]) ?? [])
     setMembers((mem.data as GroupMember[]) ?? [])
+    setMyWorkspaceScheduleMine((mine.data as ScheduleEvent[]) ?? [])
 
     const contactMap: Record<string, MemberContactInfo> = {}
     const { data: crew, error: crewErr } = await supabase.rpc('list_group_member_contacts_for_staff', {
@@ -447,9 +503,176 @@ export function TeacherGroupDetail() {
     await reload()
   }
 
+  function rejectCrossGroupOverlap() {
+    const card = crossGroupOverlapCard
+    const editId = editingEventId
+    setCrossGroupOverlapCard(null)
+    setErr(null)
+    requestAnimationFrame(() => {
+      if (card?.kind === 'edit' && editId) {
+        document.getElementById(`schedule-event-${editId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        const t = document.querySelector(
+          `#schedule-event-${editId} .schedule-list__edit-form input[type="time"]`,
+        ) as HTMLInputElement | null
+        t?.focus()
+        return
+      }
+      setSchedulePanelOpen(true)
+      document.getElementById('group-schedule')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      document.getElementById('schedule-new-start')?.focus()
+    })
+  }
+
+  async function confirmCrossGroupOverlap() {
+    if (!crossGroupOverlapCard || !groupOwnerWorkspaceId || !session?.user?.id || !id) return
+    const kind = crossGroupOverlapCard.kind
+    if (kind === 'new') {
+      if (!sched.schedule_date || !sched.start_time || !sched.end_time) {
+        setErr('حدد اليوم ووقت البداية والنهاية')
+        return
+      }
+      const starts = new Date(`${sched.schedule_date}T${sched.start_time}:00`)
+      const ends = new Date(`${sched.schedule_date}T${sched.end_time}:00`)
+      if (!(ends.getTime() > starts.getTime())) {
+        setErr('وقت النهاية يجب أن يكون بعد وقت البداية في نفس اليوم')
+        return
+      }
+      if (isScheduleStartInPast(starts)) {
+        setErr(scheduleStartInPastUserMessage())
+        setCrossGroupOverlapCard(null)
+        return
+      }
+      const overlaps = findOverlappingScheduleEvents(events, starts, ends)
+      const myId = session.user.id
+      const selfBlocks = overlaps.filter((ev) => ev.created_by === myId)
+      const otherBlock = overlaps.find((ev) => ev.created_by !== myId)
+      if (selfBlocks.length > 0) {
+        setErr('لديك حصة أو ندوة أخرى لهذا الفوج في هذا الوقت. غيّر الوقت أو عدّل الموعد القائم.')
+        setCrossGroupOverlapCard(null)
+        return
+      }
+      if (otherBlock) {
+        setErr(
+          `لا يمكن حجز نفس الفوج مرتين في هذا الوقت إلا بموافقة صاحب الحصة الحالية. يوجد ${otherBlock.event_type === 'seminar' ? 'ندوة' : 'حصة'} لـ ${scheduleEventCreatorLabel(otherBlock)}. غيّر الوقت أو اضغط «إرسال طلب موافقة» ليصل له طلبك ويقرّر.`,
+        )
+        setScheduleConflictBlocker(otherBlock)
+        setCrossGroupOverlapCard(null)
+        return
+      }
+      const otherGroupMine = myWorkspaceScheduleMine.filter(
+        (ev) => ev.group_id !== id && ev.status !== 'cancelled',
+      )
+      const crossOverlap = findOverlappingScheduleEvents(otherGroupMine, starts, ends)
+      const needsAck = crossOverlap.length > 0
+      setCrossGroupOverlapSaving(true)
+      setErr(null)
+      const { error } = await supabase.from('schedule_events').insert({
+        workspace_id: groupOwnerWorkspaceId,
+        group_id: id,
+        created_by: session.user.id,
+        event_type: sched.event_type,
+        mode: sched.mode,
+        subject_name: sched.subject_name.trim() || null,
+        starts_at: starts.toISOString(),
+        ends_at: ends.toISOString(),
+        location: sched.location.trim() || null,
+        meeting_link: sched.meeting_link.trim() || null,
+        note: sched.note.trim() || null,
+        ...(needsAck ? { teacher_cross_group_overlap_ack: true } : {}),
+      })
+      setCrossGroupOverlapSaving(false)
+      if (error) {
+        if (isPostgresExclusionViolation(error)) setErr(scheduleExclusionUserMessage())
+        else if (isTeacherCrossGroupOverlapViolation(error)) setErr(scheduleCrossGroupOverlapUserMessage())
+        else if (isScheduleStartInPastViolation(error)) setErr(scheduleStartInPastUserMessage())
+        else setErr(error.message)
+        return
+      }
+      setCrossGroupOverlapCard(null)
+      setSched({ ...emptySchedForm })
+      await reload()
+      return
+    }
+
+    if (!editingEventId || !editSched) return
+    if (!editSched.schedule_date || !editSched.start_time || !editSched.end_time) {
+      setErr('حدد اليوم ووقت البداية والنهاية')
+      return
+    }
+    const starts = new Date(`${editSched.schedule_date}T${editSched.start_time}:00`)
+    const ends = new Date(`${editSched.schedule_date}T${editSched.end_time}:00`)
+    if (!(ends.getTime() > starts.getTime())) {
+      setErr('وقت النهاية يجب أن يكون بعد وقت البداية في نفس اليوم')
+      return
+    }
+    const prevEvForPast = events.find((e) => e.id === editingEventId)
+    const prevFieldsForPast = prevEvForPast
+      ? scheduleFieldsFromIso(prevEvForPast.starts_at, prevEvForPast.ends_at)
+      : null
+    const startUnchangedForPast =
+      !!prevFieldsForPast &&
+      prevFieldsForPast.schedule_date === editSched.schedule_date &&
+      prevFieldsForPast.start_time === editSched.start_time
+    if (isScheduleStartInPast(starts) && !startUnchangedForPast) {
+      setErr(scheduleStartInPastUserMessage())
+      setCrossGroupOverlapCard(null)
+      return
+    }
+    const overlaps = findOverlappingScheduleEvents(events, starts, ends, editingEventId)
+    const myId = session.user.id
+    const selfBlocks = overlaps.filter((ev) => ev.created_by === myId)
+    const otherBlock = overlaps.find((ev) => ev.created_by !== myId)
+    if (selfBlocks.length > 0) {
+      setErr('لديك حصة أو ندوة أخرى لهذا الفوج في هذا الوقت. اختر وقتاً لا يتعارض مع مواعيدك.')
+      setCrossGroupOverlapCard(null)
+      return
+    }
+    if (otherBlock) {
+      setErr(
+        `لا يمكن حجز نفس الفوج مرتين في هذا الوقت إلا بموافقة صاحب الحصة الحالية. يوجد ${otherBlock.event_type === 'seminar' ? 'ندوة' : 'حصة'} لـ ${scheduleEventCreatorLabel(otherBlock)}. غيّر الوقت أو أرسل طلب موافقة.`,
+      )
+      setEditScheduleConflictBlocker(otherBlock)
+      setCrossGroupOverlapCard(null)
+      return
+    }
+    const otherGroupMine = myWorkspaceScheduleMine.filter(
+      (ev) => ev.group_id !== id && ev.status !== 'cancelled',
+    )
+    const crossOverlap = findOverlappingScheduleEvents(otherGroupMine, starts, ends, editingEventId)
+    const needsAck = crossOverlap.length > 0
+    setCrossGroupOverlapSaving(true)
+    setErr(null)
+    const { error } = await supabase
+      .from('schedule_events')
+      .update({
+        event_type: editSched.event_type,
+        mode: editSched.mode,
+        subject_name: editSched.subject_name.trim() || null,
+        starts_at: starts.toISOString(),
+        ends_at: ends.toISOString(),
+        location: editSched.location.trim() || null,
+        meeting_link: editSched.meeting_link.trim() || null,
+        note: editSched.note.trim() || null,
+        ...(needsAck ? { teacher_cross_group_overlap_ack: true } : {}),
+      })
+      .eq('id', editingEventId)
+    setCrossGroupOverlapSaving(false)
+    if (error) {
+      if (isPostgresExclusionViolation(error)) setErr(scheduleExclusionUserMessage())
+      else if (isTeacherCrossGroupOverlapViolation(error)) setErr(scheduleCrossGroupOverlapUserMessage())
+      else if (isScheduleStartInPastViolation(error)) setErr(scheduleStartInPastUserMessage())
+      else setErr(error.message)
+      return
+    }
+    setCrossGroupOverlapCard(null)
+    cancelEditSchedule()
+    await reload()
+  }
+
   async function submitSchedule(e: React.FormEvent) {
     e.preventDefault()
     if (!groupOwnerWorkspaceId || !session?.user?.id || !id) return
+    setCrossGroupOverlapCard(null)
     if (!sched.schedule_date || !sched.start_time || !sched.end_time) {
       setErr('حدد اليوم ووقت البداية والنهاية')
       return
@@ -458,6 +681,10 @@ export function TeacherGroupDetail() {
     const ends = new Date(`${sched.schedule_date}T${sched.end_time}:00`)
     if (!(ends.getTime() > starts.getTime())) {
       setErr('وقت النهاية يجب أن يكون بعد وقت البداية في نفس اليوم')
+      return
+    }
+    if (isScheduleStartInPast(starts)) {
+      setErr(scheduleStartInPastUserMessage())
       return
     }
     setScheduleConflictBlocker(null)
@@ -472,9 +699,22 @@ export function TeacherGroupDetail() {
     }
     if (otherBlock) {
       setErr(
-        `يوجد ${otherBlock.event_type === 'seminar' ? 'ندوة' : 'حصة'} لـ ${scheduleEventCreatorLabel(otherBlock)} في هذا الوقت. غيّر الوقت أو أرسل طلباً لصاحب الحصة.`,
+        `لا يمكن حجز نفس الفوج مرتين في هذا الوقت إلا بموافقة صاحب الحصة الحالية. يوجد ${otherBlock.event_type === 'seminar' ? 'ندوة' : 'حصة'} لـ ${scheduleEventCreatorLabel(otherBlock)}. غيّر الوقت أو اضغط «إرسال طلب موافقة» ليصل له طلبك ويقرّر.`,
       )
       setScheduleConflictBlocker(otherBlock)
+      return
+    }
+    const otherGroupMine = myWorkspaceScheduleMine.filter(
+      (ev) => ev.group_id !== id && ev.status !== 'cancelled',
+    )
+    const crossOverlap = findOverlappingScheduleEvents(otherGroupMine, starts, ends)
+    if (crossOverlap.length > 0) {
+      setSchedulePanelOpen(true)
+      setCrossGroupOverlapCard({ kind: 'new', otherSessions: crossOverlap })
+      setErr(null)
+      requestAnimationFrame(() => {
+        document.getElementById('schedule-cross-group-alert')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      })
       return
     }
     const { error } = await supabase.from('schedule_events').insert({
@@ -492,6 +732,8 @@ export function TeacherGroupDetail() {
     })
     if (error) {
       if (isPostgresExclusionViolation(error)) setErr(scheduleExclusionUserMessage())
+      else if (isTeacherCrossGroupOverlapViolation(error)) setErr(scheduleCrossGroupOverlapUserMessage())
+      else if (isScheduleStartInPastViolation(error)) setErr(scheduleStartInPastUserMessage())
       else setErr(error.message)
       return
     }
@@ -512,6 +754,10 @@ export function TeacherGroupDetail() {
     const ends = new Date(`${form.schedule_date}T${form.end_time}:00`)
     if (!(ends.getTime() > starts.getTime())) {
       setErr('وقت النهاية يجب أن يكون بعد وقت البداية في نفس اليوم')
+      return
+    }
+    if (isScheduleStartInPast(starts)) {
+      setErr(scheduleStartInPastUserMessage())
       return
     }
     setSlotRequestSending(true)
@@ -571,7 +817,7 @@ export function TeacherGroupDetail() {
   function canMutateScheduleEvent(ev: ScheduleEvent): boolean {
     const uid = session?.user?.id
     if (!uid) return false
-    return isGroupOwner || ev.created_by === uid
+    return isGroupOwner || ev.created_by === uid || profile?.role === 'admin'
   }
 
   useEffect(() => {
@@ -629,11 +875,13 @@ export function TeacherGroupDetail() {
     setEditingEventId(null)
     setEditSched(null)
     setEditScheduleConflictBlocker(null)
+    setCrossGroupOverlapCard(null)
   }
 
   async function saveEditSchedule(e: React.FormEvent) {
     e.preventDefault()
     if (!editingEventId || !editSched) return
+    setCrossGroupOverlapCard(null)
     if (!editSched.schedule_date || !editSched.start_time || !editSched.end_time) {
       setErr('حدد اليوم ووقت البداية والنهاية')
       return
@@ -642,6 +890,16 @@ export function TeacherGroupDetail() {
     const ends = new Date(`${editSched.schedule_date}T${editSched.end_time}:00`)
     if (!(ends.getTime() > starts.getTime())) {
       setErr('وقت النهاية يجب أن يكون بعد وقت البداية في نفس اليوم')
+      return
+    }
+    const prevEvEdit = events.find((e) => e.id === editingEventId)
+    const prevFieldsEdit = prevEvEdit ? scheduleFieldsFromIso(prevEvEdit.starts_at, prevEvEdit.ends_at) : null
+    const startUnchangedEdit =
+      !!prevFieldsEdit &&
+      prevFieldsEdit.schedule_date === editSched.schedule_date &&
+      prevFieldsEdit.start_time === editSched.start_time
+    if (isScheduleStartInPast(starts) && !startUnchangedEdit) {
+      setErr(scheduleStartInPastUserMessage())
       return
     }
     setEditScheduleConflictBlocker(null)
@@ -656,9 +914,22 @@ export function TeacherGroupDetail() {
     }
     if (otherBlock) {
       setErr(
-        `يوجد ${otherBlock.event_type === 'seminar' ? 'ندوة' : 'حصة'} لـ ${scheduleEventCreatorLabel(otherBlock)} في هذا الوقت. غيّر الوقت أو أرسل طلباً لصاحب الحصة.`,
+        `لا يمكن حجز نفس الفوج مرتين في هذا الوقت إلا بموافقة صاحب الحصة الحالية. يوجد ${otherBlock.event_type === 'seminar' ? 'ندوة' : 'حصة'} لـ ${scheduleEventCreatorLabel(otherBlock)}. غيّر الوقت أو أرسل طلب موافقة.`,
       )
       setEditScheduleConflictBlocker(otherBlock)
+      return
+    }
+    const otherGroupMine = myWorkspaceScheduleMine.filter(
+      (ev) => ev.group_id !== id && ev.status !== 'cancelled',
+    )
+    const crossOverlap = findOverlappingScheduleEvents(otherGroupMine, starts, ends, editingEventId)
+    if (crossOverlap.length > 0) {
+      setSchedulePanelOpen(true)
+      setCrossGroupOverlapCard({ kind: 'edit', otherSessions: crossOverlap })
+      setErr(null)
+      requestAnimationFrame(() => {
+        document.getElementById('schedule-cross-group-alert')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      })
       return
     }
     setScheduleEditSaving(true)
@@ -679,6 +950,8 @@ export function TeacherGroupDetail() {
     setScheduleEditSaving(false)
     if (error) {
       if (isPostgresExclusionViolation(error)) setErr(scheduleExclusionUserMessage())
+      else if (isTeacherCrossGroupOverlapViolation(error)) setErr(scheduleCrossGroupOverlapUserMessage())
+      else if (isScheduleStartInPastViolation(error)) setErr(scheduleStartInPastUserMessage())
       else setErr(error.message)
       return
     }
@@ -692,7 +965,7 @@ export function TeacherGroupDetail() {
     const { error } = await supabase.from('schedule_events').delete().eq('id', evId)
     if (error) {
       if (error.code === '42501' || /permission|policy|rls/i.test(error.message))
-        setErr('لا يمكنك حذف حصة أستاذ آخر. يمكن لمالك المساحة حذفها إن لزم.')
+        setErr('لا يمكنك حذف حصة أستاذ آخر. يمكن لمالك المساحة أو مدير التطبيق حذفها إن لزم.')
       else setErr(error.message)
       return
     }
@@ -1111,6 +1384,55 @@ export function TeacherGroupDetail() {
       </section>
 
       <section className="section cohort-schedule-section">
+        {crossGroupOverlapCard ? (
+          <div
+            id="schedule-cross-group-alert"
+            className="banner banner--error student-home__warn"
+            style={{ marginBottom: '1rem' }}
+            role="alert"
+          >
+            <strong>تداخل: حصتان لك في نفس الوقت (فوجان مختلفان)</strong>
+            <p className="small" style={{ marginTop: '0.5rem' }}>
+              القاعدة لا تقبل الحفظ دون موافقة صريحة منك — بنفس فكرة «طلب موافقة» لنفس الفوج. راجع الحصص الأخرى
+              المسجّلة باسمك أدناه، ثم إمّا تؤكّد أو تغيّر التاريخ/الوقت.
+            </p>
+            <ul className="small" style={{ margin: '0.75rem 0', paddingInlineStart: '1.25rem' }}>
+              {crossGroupOverlapCard.otherSessions.map((ev) => (
+                <li key={ev.id}>
+                  <span className="input--ltr">
+                    {new Date(ev.starts_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  {' — '}
+                  <strong>
+                    {(ev.subject_name ?? '').trim() || (ev.event_type === 'seminar' ? 'ندوة' : 'حصة')}
+                  </strong>
+                  {' — '}
+                  <span className="muted">
+                    {ev.mode === 'online' ? 'عن بُعد' : 'حضوري'} (فوج آخر)
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.75rem' }}>
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={!canManageSchedule || crossGroupOverlapSaving}
+                onClick={() => void confirmCrossGroupOverlap()}
+              >
+                {crossGroupOverlapSaving ? 'جاري التثبيت…' : 'موافقة وتثبيت'}
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                disabled={crossGroupOverlapSaving}
+                onClick={rejectCrossGroupOverlap}
+              >
+                رفض — سأغيّر البيانات
+              </button>
+            </div>
+          </div>
+        ) : null}
         <details
           id="group-schedule"
           className="cohort-disclosure cohort-disclosure--schedule"
@@ -1175,6 +1497,7 @@ export function TeacherGroupDetail() {
           <label>
             وقت البداية
             <input
+              id="schedule-new-start"
               type="time"
               className="input--ltr"
               value={sched.start_time}
@@ -1233,8 +1556,9 @@ export function TeacherGroupDetail() {
         {scheduleConflictBlocker ? (
           <div className="schedule-slot-request-banner muted small" style={{ marginTop: '0.75rem' }}>
             <p>
-              يمكنك إرسال طلب لـ <strong>{scheduleEventCreatorLabel(scheduleConflictBlocker)}</strong>. عند الموافقة
-              تُلغى حصته وتُثبَّت حصتك بهذه البيانات.
+              النظام لا يقبل حجز نفس الفوج مرتين في هذا الوقت إلا بموافقة صاحب الحصة الحالية. أرسل طلباً إلى{' '}
+              <strong>{scheduleEventCreatorLabel(scheduleConflictBlocker)}</strong>: عند موافقته تُلغى حصته وتُثبَّت
+              حصتك بهذه البيانات.
             </p>
             <div className="schedule-slot-request-banner__actions" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
               <button
@@ -1414,7 +1738,7 @@ export function TeacherGroupDetail() {
                     {editScheduleConflictBlocker ? (
                       <div className="schedule-slot-request-banner muted small" style={{ marginTop: '0.75rem' }}>
                         <p>
-                          يمكنك إرسال طلب لـ{' '}
+                          لا يُقبل تعديلك إلى هذا الوقت إلا بموافقة صاحب الحصة الحالية. أرسل طلباً إلى{' '}
                           <strong>{scheduleEventCreatorLabel(editScheduleConflictBlocker)}</strong> لأخذ الفترة
                           بالبيانات أعلاه.
                         </p>
@@ -1589,7 +1913,7 @@ export function TeacherGroupDetail() {
           </section>
         ) : null}
 
-        <section className="section">
+        <section id="teacher-group-wall" className="section">
           <h2>نشر على الحائط</h2>
           <form className="form" onSubmit={submitPost}>
             <label>

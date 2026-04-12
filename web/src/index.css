@@ -795,6 +795,46 @@ a:hover {
   line-height: 1.35;
 }
 
+button.teacher-home__quick-card {
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  width: 100%;
+}
+
+.teacher-home__quick-card-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+
+.teacher-home__quick-card-wrap.is-expanded {
+  grid-column: 1 / -1;
+}
+
+.teacher-home__quick-card.is-active {
+  border-color: var(--color-primary-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.teacher-home__quick-panel {
+  margin-top: 0.5rem;
+  padding: 1rem;
+  background: var(--color-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.teacher-home__quick-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  align-items: center;
+}
+
 .teacher-settings__intro {
   margin: 0 0 1rem;
 }
@@ -1944,6 +1984,105 @@ select:focus-visible {
 .list-links a:hover {
   background: var(--color-surface-hover);
   border-color: var(--color-border-strong);
+}
+
+.teacher-inbox__section {
+  margin-bottom: 1.35rem;
+}
+
+.teacher-inbox__section-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem;
+  color: var(--color-heading);
+}
+
+.teacher-inbox__section-empty {
+  margin: 0;
+}
+
+.teacher-inbox__row {
+  flex-direction: column;
+  align-items: stretch !important;
+  gap: 0.35rem !important;
+}
+
+.teacher-inbox__row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.teacher-inbox__row-title {
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.teacher-inbox__row-sub {
+  line-height: 1.35;
+}
+
+.teacher-inbox__row:not(.teacher-inbox__row--coordinator) {
+  position: relative;
+  padding-inline-end: 2.85rem;
+}
+
+.teacher-inbox__row:not(.teacher-inbox__row--coordinator) .teacher-inbox__unread-badge {
+  position: absolute;
+  top: 0.7rem;
+  inset-inline-end: 0.75rem;
+}
+
+.teacher-inbox__row--coordinator {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem !important;
+  padding-inline-end: 1rem;
+}
+
+.teacher-inbox__coord-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.teacher-inbox__row-trail {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.teacher-inbox__unread-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  min-width: 1.35rem;
+  text-align: center;
+  padding: 0.15rem 0.42rem;
+  border-radius: 999px;
+  background: var(--color-primary-dim);
+  color: var(--color-primary-hover);
+  border: 1px solid color-mix(in srgb, var(--color-primary-hover) 35%, transparent);
+}
+
+.teacher-inbox__urgent {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--color-danger, #b91c1c);
+  background: color-mix(in srgb, var(--color-danger, #b91c1c) 14%, transparent);
+  border: 2px solid var(--color-danger, #b91c1c);
 }
 
 .badge {
@@ -3376,6 +3515,62 @@ select:focus-visible {
 
 .teacher-home__coord-msg-badge {
   cursor: default;
+}
+
+.teacher-home__quick-section {
+  margin-bottom: 1.25rem;
+}
+
+.teacher-home__level-block {
+  margin-bottom: 1.25rem;
+}
+
+.teacher-home__level-block:last-child {
+  margin-bottom: 0;
+}
+
+.teacher-home__level-h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.teacher-home__coord-inbox-hint {
+  margin: 0 0 0.65rem;
+}
+
+.teacher-home__coord-inbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.teacher-home__coord-inbox-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.65rem;
+  text-decoration: none;
+  color: inherit;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s;
+}
+
+.teacher-home__coord-inbox-link:hover,
+.teacher-home__coord-inbox-link:focus-visible {
+  border-color: var(--color-border-strong);
+  outline: none;
+}
+
+.teacher-home__coord-inbox-group {
+  font-weight: 600;
 }
 
 /* بطاقة حساب الأستاذ */

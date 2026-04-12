@@ -34,7 +34,8 @@ function slotRequestOutcomeMessage(status: ScheduleSlotRequestRow['status']) {
 }
 
 export function TeacherScheduleRequestsPage() {
-  const { session } = useAuth()
+  const { session, profile } = useAuth()
+  const isAdmin = profile?.role === 'admin'
   const uid = session?.user?.id
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -112,12 +113,13 @@ export function TeacherScheduleRequestsPage() {
     for (const r of rows) {
       const blockerId = (r.blocking_creator_id ?? r.blocking_event?.created_by) || null
       const ownerCanDecide = ownerWorkspaceIds.has(r.workspace_id) && r.requester_id !== uid
+      const adminCanDecide = isAdmin && r.status === 'pending' && r.requester_id !== uid
       if (r.requester_id === uid) out.push(r)
-      else if (blockerId === uid || ownerCanDecide) inc.push(r)
+      else if (blockerId === uid || ownerCanDecide || adminCanDecide) inc.push(r)
       else over.push(r)
     }
     return { incoming: inc, outgoing: out, oversight: over }
-  }, [rows, uid, ownerWorkspaceIds])
+  }, [rows, uid, ownerWorkspaceIds, isAdmin])
 
   async function approve(id: string) {
     setBusyId(id)
@@ -177,7 +179,7 @@ export function TeacherScheduleRequestsPage() {
       </p>
       <PageHeader
         title="طلبات الحصص"
-        subtitle="طلبات أخذ فترة زميل في نفس الفوج. الموافقة تلغي حصته وتُثبِّت حصتك بالبيانات المقترحة."
+        subtitle="طلبات أخذ فترة زميل في نفس الفوج. لا يُفعّل الحجز الثاني إلا بموافقة صاحب الحصة الحالية؛ عند الموافقة تُلغى حصته وتُثبَّت حصتك بالبيانات المقترحة."
       />
       <ErrorBanner message={err} />
       {loading ? (

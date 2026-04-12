@@ -1,5 +1,5 @@
 /** Default slot length when the user picks a start time without an end time. */
-export const DEFAULT_SCHEDULE_DURATION_MIN = 90
+export const DEFAULT_SCHEDULE_DURATION_MIN = 120
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 

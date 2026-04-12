@@ -14,6 +14,7 @@ type SlotReqMeta = {
 
 export function NotificationsPage() {
   const { session, profile } = useAuth()
+  const isAdmin = profile?.role === 'admin'
   const isTeacherUi = profile?.role === 'teacher' || profile?.role === 'admin'
   const uid = session?.user?.id
   const [err, setErr] = useState<string | null>(null)
@@ -119,6 +120,7 @@ export function NotificationsPage() {
   function canDecideSlotRequest(meta: SlotReqMeta | undefined): boolean {
     if (!uid || !meta) return false
     return (
+      isAdmin ||
       (meta.blocking_creator_id != null && meta.blocking_creator_id === uid) ||
       ownerWorkspaceIds.has(meta.workspace_id)
     )

@@ -1,46 +1,109 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { fetchWorkspaceForTeacher } from '../../lib/workspace'
-import { whatsappHref } from '../../lib/whatsapp'
-import {
-  addDays,
-  startOfMonday,
-  fetchTeacherWeekScheduleRows,
-  emptyScheduleOverlapAudit,
-  sameLocalDay,
-  type ScheduleWeekEventRow,
-} from '../../lib/teacherWeekSchedule'
+import { fetchTeacherWeekScheduleRows, sameLocalDay, type ScheduleWeekEventRow } from '../../lib/teacherWeekSchedule'
 import { scheduleEventCreatorLabel } from '../../lib/scheduleConflict'
-import {
-  localTodayBoundsIso,
-  normalizeTeacherGroupSummaryRows,
-  studyLevelLabelAr,
-} from '../../lib/teacherGroups'
-import type { TeacherGroupSummaryRow } from '../../types'
+import { localTodayBoundsIso, normalizeTeacherGroupSummaryRows, studyLevelLabelAr } from '../../lib/teacherGroups'
+import type { StudyLevel, TeacherGroupSummaryRow } from '../../types'
 import { DEFAULT_GROUP_ACCENT } from '../../lib/groupTheme'
 import { rgbaFromHex } from '../../lib/colorContrast'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
-import { ScheduleOverlapBanners } from '../../components/ScheduleOverlapBanners'
-import { TeacherWeekScheduleGrid } from '../../components/teacher/TeacherWeekScheduleGrid'
+
+const STUDY_LEVEL_BLOCKS: { level: StudyLevel; heading: string }[] = [
+  { level: 'licence', heading: 'إجازة' },
+  { level: 'master', heading: 'ماستر' },
+  { level: 'doctorate', heading: 'دكتوراه' },
+]
+
+function renderGroupRows(rows: TeacherGroupSummaryRow[]) {
+  return (
+    <div className="teacher-groups__sheet teacher-home__groups-sheet">
+      <div className="teacher-groups__thead teacher-home__groups-thead" aria-hidden>
+        <span className="teacher-groups__th teacher-groups__th--accent" />
+        <span className="teacher-groups__th">اسم الفوج</span>
+        <span className="teacher-groups__th">المستوى</span>
+        <span className="teacher-groups__th">عادي / ميسر</span>
+        <span className="teacher-groups__th">المنسق</span>
+        <span className="teacher-groups__th teacher-groups__th--meta" />
+      </div>
+      <ul className="teacher-groups__list teacher-groups__list--lines">
+        {rows.map((r) => {
+          const accent =
+            r.accent_color && /^#[0-9A-Fa-f]{6}$/.test(r.accent_color) ? r.accent_color : DEFAULT_GROUP_ACCENT
+          const coordUnread = r.unread_coordinator_count
+          const rowBg = rgbaFromHex(accent, 0.08) ?? undefined
+          const hasCoordinator = Boolean(r.coordinator_name?.trim())
+          return (
+            <li key={r.group_id}>
+              <Link
+                to={`/t/groups/${r.group_id}`}
+                className="teacher-groups__row-line"
+                style={{ backgroundColor: rowBg }}
+              >
+                <span
+                  className="teacher-groups__row-accent teacher-groups__row-accent--line"
+                  style={{ backgroundColor: accent }}
+                  aria-hidden
+                />
+                <span className="teacher-groups__cell teacher-groups__cell--name">{r.group_name}</span>
+                <span className="teacher-groups__cell muted">{studyLevelLabelAr(r.study_level)}</span>
+                <span className="teacher-groups__cell teacher-home__groups-mode" title="وجود منسّق للفوج">
+                  {hasCoordinator ? (
+                    <span className="pill pill--compact teacher-home__pill-misir">ميسر</span>
+                  ) : (
+                    <span className="pill pill--compact teacher-home__pill-adi">عادي</span>
+                  )}
+                </span>
+                <span className="teacher-groups__cell teacher-groups__cell--coord" title="منسق الفوج">
+                  <span className="teacher-groups__coord-name">{r.coordinator_name?.trim() || '—'}</span>
+                  {coordUnread > 0 ? (
+                    <span
+                      className="teacher-groups__coord-unread teacher-groups__coord-unread--inline teacher-home__coord-msg-badge"
+                      title="رسائل غير مقروءة من المنسق"
+                    >
+                      {coordUnread > 99 ? '99+' : coordUnread}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="teacher-groups__cell teacher-groups__cell--meta">
+                  {r.is_owner === false ? <span className="pill teacher-groups__compact-pill">مرتبط</span> : null}
+                </span>
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+type QuickExpanded = null | 'announce' | 'post'
 
 export function TeacherDashboard() {
   const { session, profile } = useAuth()
   const [err, setErr] = useState<string | null>(null)
-  const [summary, setSummary] = useState<{
-    groups: number
-    openConversations: number
-    unreadNotif: number
-  } | null>(null)
-  const [workspaceSlug, setWorkspaceSlug] = useState<string | null>(null)
   const [workspaceId, setWorkspaceId] = useState<string | null>(null)
-  const [weekOffset, setWeekOffset] = useState(0)
-  const [schedRows, setSchedRows] = useState<ScheduleWeekEventRow[]>([])
-  const [schedLoading, setSchedLoading] = useState(false)
-  const [schedErr, setSchedErr] = useState<string | null>(null)
-  const [schedOverlapAudit, setSchedOverlapAudit] = useState(emptyScheduleOverlapAudit)
+
+  const [expandedQuick, setExpandedQuick] = useState<QuickExpanded>(null)
+
+  const [annAudience, setAnnAudience] = useState<'workspace' | 'group'>('group')
+  const [annGroupId, setAnnGroupId] = useState('')
+  const [annTitle, setAnnTitle] = useState('')
+  const [annContent, setAnnContent] = useState('')
+  const [annSaving, setAnnSaving] = useState(false)
+  const [annErr, setAnnErr] = useState<string | null>(null)
+  const [annOk, setAnnOk] = useState<string | null>(null)
+
+  const [postAudience, setPostAudience] = useState<'workspace' | 'group'>('group')
+  const [postGroupId, setPostGroupId] = useState('')
+  const [postTitle, setPostTitle] = useState('')
+  const [postContent, setPostContent] = useState('')
+  const [postSaving, setPostSaving] = useState(false)
+  const [postErr, setPostErr] = useState<string | null>(null)
+  const [postOk, setPostOk] = useState<string | null>(null)
 
   const [groupRows, setGroupRows] = useState<TeacherGroupSummaryRow[]>([])
   const [groupsListErr, setGroupsListErr] = useState<string | null>(null)
@@ -57,6 +120,32 @@ export function TeacherDashboard() {
     return todayRows.filter((ev) => sameLocalDay(new Date(ev.starts_at), now))
   }, [todayRows])
 
+  const hasOwnedGroup = useMemo(() => groupRows.some((r) => r.is_owner !== false), [groupRows])
+  const firstGroupId = useMemo(() => groupRows[0]?.group_id ?? null, [groupRows])
+
+  const groupsByLevel = useMemo(() => {
+    const map: Record<StudyLevel, TeacherGroupSummaryRow[]> = {
+      licence: [],
+      master: [],
+      doctorate: [],
+    }
+    const other: TeacherGroupSummaryRow[] = []
+    for (const r of groupRows) {
+      const sl = r.study_level
+      if (sl === 'licence' || sl === 'master' || sl === 'doctorate') {
+        map[sl].push(r)
+      } else {
+        other.push(r)
+      }
+    }
+    return { map, other }
+  }, [groupRows])
+
+  const coordinatorUnreadRows = useMemo(
+    () => groupRows.filter((r) => r.unread_coordinator_count > 0),
+    [groupRows],
+  )
+
   useEffect(() => {
     let ok = true
     ;(async () => {
@@ -65,36 +154,12 @@ export function TeacherDashboard() {
       if (wErr || !workspace) {
         if (ok) {
           setErr(wErr?.message ?? 'لم يُعثر على مساحة الأستاذ')
-          setSummary({ groups: 0, openConversations: 0, unreadNotif: 0 })
-          setWorkspaceSlug(null)
           setWorkspaceId(null)
         }
         return
       }
-      const wsId = workspace.id as string
-      if (ok) {
-        setWorkspaceSlug((workspace.slug as string) ?? null)
-        setWorkspaceId(wsId)
-      }
-      const [g, c, n] = await Promise.all([
-        supabase.from('groups').select('id', { count: 'exact', head: true }).eq('workspace_id', wsId),
-        supabase
-          .from('conversations')
-          .select('id', { count: 'exact', head: true })
-          .eq('workspace_id', wsId)
-          .eq('status', 'open'),
-        supabase
-          .from('notifications')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', session.user.id)
-          .eq('is_read', false),
-      ])
-      if (!ok) return
-      setSummary({
-        groups: g.count ?? 0,
-        openConversations: c.count ?? 0,
-        unreadNotif: n.count ?? 0,
-      })
+      if (ok) setWorkspaceId(workspace.id as string)
+      if (ok) setErr(null)
     })()
     return () => {
       ok = false
@@ -149,89 +214,381 @@ export function TeacherDashboard() {
   }, [session?.user?.id, workspaceId])
 
   useEffect(() => {
-    let ok = true
-    const uid = session?.user?.id
-    if (!uid || !workspaceId) {
-      setSchedRows([])
-      setSchedLoading(false)
-      setSchedOverlapAudit(emptyScheduleOverlapAudit)
-      return
+    if (annGroupId && !groupRows.some((r) => r.group_id === annGroupId)) {
+      setAnnGroupId(groupRows[0]?.group_id ?? '')
     }
-    ;(async () => {
-      setSchedLoading(true)
-      setSchedErr(null)
-      const weekStart = addDays(startOfMonday(new Date()), weekOffset * 7)
-      const weekEnd = addDays(weekStart, 6)
-      weekEnd.setHours(23, 59, 59, 999)
-      const { rows, error, overlapAudit } = await fetchTeacherWeekScheduleRows(
-        supabase,
-        uid,
-        workspaceId,
-        weekStart,
-        weekEnd,
-      )
-      if (!ok) return
-      setSchedLoading(false)
-      if (error) {
-        setSchedErr(error)
-        setSchedRows([])
-        setSchedOverlapAudit(emptyScheduleOverlapAudit)
-      } else {
-        setSchedErr(null)
-        setSchedRows(rows)
-        setSchedOverlapAudit(overlapAudit)
+    if (postGroupId && !groupRows.some((r) => r.group_id === postGroupId)) {
+      setPostGroupId(groupRows[0]?.group_id ?? '')
+    }
+  }, [groupRows, annGroupId, postGroupId])
+
+  useEffect(() => {
+    if (expandedQuick === 'announce') {
+      setAnnErr(null)
+      setAnnOk(null)
+      setAnnGroupId((id) => id || groupRows[0]?.group_id || '')
+      if (!hasOwnedGroup) setAnnAudience('group')
+    }
+    if (expandedQuick === 'post') {
+      setPostErr(null)
+      setPostOk(null)
+      setPostGroupId((id) => id || groupRows[0]?.group_id || '')
+      if (!hasOwnedGroup) setPostAudience('group')
+    }
+  }, [expandedQuick, groupRows, hasOwnedGroup])
+
+  const submitQuickPost = useCallback(
+    async (
+      kind: 'announce' | 'post',
+      audience: 'workspace' | 'group',
+      groupId: string,
+      title: string,
+      content: string,
+      setSaving: (v: boolean) => void,
+      setLocalErr: (v: string | null) => void,
+      setLocalOk: (v: string | null) => void,
+      clearFields: () => void,
+    ) => {
+      const uid = session?.user?.id
+      if (!uid || !workspaceId) {
+        setLocalErr('لا مساحة للأستاذ')
+        return
       }
-    })()
-    return () => {
-      ok = false
-    }
-  }, [session?.user?.id, workspaceId, weekOffset])
+      const trimmed = content.trim()
+      if (!trimmed) {
+        setLocalErr('أدخل نص الإعلان أو المنشور')
+        return
+      }
+      if (audience === 'workspace' && !hasOwnedGroup) {
+        setLocalErr('نشر «لكل الطلبة» يتطلب فوجاً تملكه في مساحتك')
+        return
+      }
+      if (audience === 'group' && !groupId) {
+        setLocalErr('اختر فوجاً')
+        return
+      }
+      setSaving(true)
+      setLocalErr(null)
+      setLocalOk(null)
+      try {
+        let wsId = workspaceId
+        if (audience === 'group') {
+          const { data: g, error: ge } = await supabase
+            .from('groups')
+            .select('workspace_id')
+            .eq('id', groupId)
+            .single()
+          if (ge || !g) {
+            setLocalErr(ge?.message ?? 'تعذر تحميل بيانات الفوج')
+            return
+          }
+          wsId = g.workspace_id as string
+        }
+        const row = {
+          workspace_id: wsId,
+          group_id: audience === 'group' ? groupId : null,
+          author_id: uid,
+          scope: audience,
+          title: title.trim() || null,
+          content: trimmed,
+          post_type: kind === 'announce' ? 'announcement' : 'general',
+        }
+        const { error } = await supabase.from('posts').insert(row)
+        if (error) {
+          setLocalErr(error.message)
+          return
+        }
+        clearFields()
+        setLocalOk(kind === 'announce' ? 'تم نشر الإعلان.' : 'تم نشر المنشور.')
+      } finally {
+        setSaving(false)
+      }
+    },
+    [session?.user?.id, workspaceId, hasOwnedGroup],
+  )
 
   if (!session?.user?.id) return <Loading />
 
-  const displayName = profile?.full_name?.trim() || 'أستاذ'
-  const initial = displayName.charAt(0) || '?'
-  const bio = profile?.bio?.trim() ?? ''
-  const phone = profile?.phone?.trim() ?? ''
-  const wa = profile?.whatsapp?.trim() ?? ''
-  const waLink = wa ? whatsappHref(wa) : null
-  const office = profile?.office_hours?.trim() ?? ''
+  const scheduleTo =
+    firstGroupId != null ? `/t/groups/${firstGroupId}#group-schedule` : '/t/groups'
+
+  function toggleQuick(kind: 'announce' | 'post') {
+    setExpandedQuick((prev) => (prev === kind ? null : kind))
+  }
 
   return (
     <div className="page">
-      <header className="teacher-home__masthead">
-        <h1 className="page-header__title teacher-home__title">
-          الأستاذ <span className="teacher-home__masthead-name">{displayName}</span>
-        </h1>
-        <p className="teacher-home__masthead-actions muted">
-          <Link to="/t/account" className="teacher-home__masthead-add">
-            أضف
-          </Link>
-          {' '}
-          نبذة أو قنوات تواصل من <Link to="/t/account">حسابي</Link>.
-        </p>
-        {workspaceSlug ? (
-          <p className="teacher-home__public-page-hint muted small">
-            <strong className="teacher-home__public-page-label">صفحتك العامة للزوار:</strong>{' '}
-            <a
-              href={`/p/${encodeURIComponent(workspaceSlug)}`}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="teacher-home__inline-link"
-            >
-              فتح الصفحة الرسمية
-            </a>
-            {' — '}
-            تظهر فيها الهوية، المكتبة، منشورات المساحة، والتواصل كما يضبطان من «حسابي» و«مكتبتي» والمنشورات على مستوى المساحة.
-          </p>
-        ) : null}
-      </header>
       <ErrorBanner message={err} />
 
       {!profile ? (
         <Loading label="جاري التحميل…" />
       ) : (
         <>
+          <section className="section teacher-home__quick-section" aria-labelledby="teacher-home-quick-h">
+            <h2 id="teacher-home-quick-h" className="teacher-home__quick-title">
+              إضافة
+            </h2>
+            <div className="teacher-home__quick-grid">
+              <div
+                className={`teacher-home__quick-card-wrap${expandedQuick === 'announce' ? ' is-expanded' : ''}`}
+              >
+                <button
+                  type="button"
+                  className={`teacher-home__quick-card${expandedQuick === 'announce' ? ' is-active' : ''}`}
+                  aria-expanded={expandedQuick === 'announce'}
+                  onClick={() => toggleQuick('announce')}
+                >
+                  <span className="teacher-home__quick-card-title">+ إعلان</span>
+                  <span className="teacher-home__quick-card-desc muted">
+                    لكل الطلبة أو فوج محدد — اضغط لإظهار الخانات
+                  </span>
+                </button>
+                {expandedQuick === 'announce' && workspaceId ? (
+                  <div className="teacher-home__quick-panel">
+                    {groupsListLoading ? (
+                      <p className="muted small">جاري تحميل الأفواج…</p>
+                    ) : groupRows.length === 0 ? (
+                      <p className="muted small">
+                        لا توجد أفواج. أنشئ فوجاً من{' '}
+                        <Link to="/t/groups">إدارة الأفواج</Link>.
+                      </p>
+                    ) : (
+                      <form
+                        className="form"
+                        onSubmit={(e) => {
+                          e.preventDefault()
+                          void submitQuickPost(
+                            'announce',
+                            annAudience,
+                            annGroupId,
+                            annTitle,
+                            annContent,
+                            setAnnSaving,
+                            setAnnErr,
+                            setAnnOk,
+                            () => {
+                              setAnnTitle('')
+                              setAnnContent('')
+                            },
+                          )
+                        }}
+                      >
+                        <label>
+                          يظهر لـ
+                          <select
+                            value={annAudience}
+                            onChange={(e) =>
+                              setAnnAudience(e.target.value === 'workspace' ? 'workspace' : 'group')
+                            }
+                          >
+                            <option value="workspace" disabled={!hasOwnedGroup}>
+                              كل الطلبة (كل أفواج مساحتي)
+                            </option>
+                            <option value="group">فوج محدد</option>
+                          </select>
+                        </label>
+                        {annAudience === 'group' ? (
+                          <label>
+                            الفوج
+                            <select
+                              value={annGroupId}
+                              onChange={(e) => setAnnGroupId(e.target.value)}
+                              required
+                            >
+                              {groupRows.map((r) => (
+                                <option key={r.group_id} value={r.group_id}>
+                                  {r.group_name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
+                        {!hasOwnedGroup ? (
+                          <p className="field-hint muted small">
+                            خيار «كل الطلبة» متاح عند وجود فوج تملكه في مساحتك. يمكنك النشر لفوج مرتبط من القائمة.
+                          </p>
+                        ) : null}
+                        <label>
+                          عنوان (اختياري)
+                          <input
+                            value={annTitle}
+                            onChange={(e) => setAnnTitle(e.target.value)}
+                            maxLength={200}
+                          />
+                        </label>
+                        <label>
+                          نص الإعلان
+                          <textarea
+                            rows={4}
+                            value={annContent}
+                            onChange={(e) => setAnnContent(e.target.value)}
+                            required
+                          />
+                        </label>
+                        {annErr ? <p className="field-hint" style={{ color: 'var(--color-danger, #b91c1c)' }}>{annErr}</p> : null}
+                        {annOk ? <p className="field-hint muted">{annOk}</p> : null}
+                        <div className="teacher-home__quick-panel-actions">
+                          <button type="submit" className="btn btn--primary" disabled={annSaving}>
+                            {annSaving ? 'جاري النشر…' : 'نشر الإعلان'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost"
+                            onClick={() => setExpandedQuick(null)}
+                          >
+                            إغلاق
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+                ) : expandedQuick === 'announce' && !workspaceId ? (
+                  <div className="teacher-home__quick-panel">
+                    <p className="muted small">لا تتوفر مساحة أستاذ. أكمل إعداد الحساب ثم أعد المحاولة.</p>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className={`teacher-home__quick-card-wrap${expandedQuick === 'post' ? ' is-expanded' : ''}`}>
+                <button
+                  type="button"
+                  className={`teacher-home__quick-card${expandedQuick === 'post' ? ' is-active' : ''}`}
+                  aria-expanded={expandedQuick === 'post'}
+                  onClick={() => toggleQuick('post')}
+                >
+                  <span className="teacher-home__quick-card-title">+ منشور</span>
+                  <span className="teacher-home__quick-card-desc muted">
+                    لكل الطلبة أو فوج محدد — اضغط لإظهار الخانات
+                  </span>
+                </button>
+                {expandedQuick === 'post' && workspaceId ? (
+                  <div className="teacher-home__quick-panel">
+                    {groupsListLoading ? (
+                      <p className="muted small">جاري تحميل الأفواج…</p>
+                    ) : groupRows.length === 0 ? (
+                      <p className="muted small">
+                        لا توجد أفواج. أنشئ فوجاً من{' '}
+                        <Link to="/t/groups">إدارة الأفواج</Link>.
+                      </p>
+                    ) : (
+                      <form
+                        className="form"
+                        onSubmit={(e) => {
+                          e.preventDefault()
+                          void submitQuickPost(
+                            'post',
+                            postAudience,
+                            postGroupId,
+                            postTitle,
+                            postContent,
+                            setPostSaving,
+                            setPostErr,
+                            setPostOk,
+                            () => {
+                              setPostTitle('')
+                              setPostContent('')
+                            },
+                          )
+                        }}
+                      >
+                        <label>
+                          يظهر لـ
+                          <select
+                            value={postAudience}
+                            onChange={(e) =>
+                              setPostAudience(e.target.value === 'workspace' ? 'workspace' : 'group')
+                            }
+                          >
+                            <option value="workspace" disabled={!hasOwnedGroup}>
+                              كل الطلبة (كل أفواج مساحتي)
+                            </option>
+                            <option value="group">فوج محدد</option>
+                          </select>
+                        </label>
+                        {postAudience === 'group' ? (
+                          <label>
+                            الفوج
+                            <select
+                              value={postGroupId}
+                              onChange={(e) => setPostGroupId(e.target.value)}
+                              required
+                            >
+                              {groupRows.map((r) => (
+                                <option key={r.group_id} value={r.group_id}>
+                                  {r.group_name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
+                        {!hasOwnedGroup ? (
+                          <p className="field-hint muted small">
+                            خيار «كل الطلبة» يظهر عند وجود فوج تملكه في مساحتك.
+                          </p>
+                        ) : null}
+                        <label>
+                          عنوان (اختياري)
+                          <input
+                            value={postTitle}
+                            onChange={(e) => setPostTitle(e.target.value)}
+                            maxLength={200}
+                          />
+                        </label>
+                        <label>
+                          نص المنشور
+                          <textarea
+                            rows={4}
+                            value={postContent}
+                            onChange={(e) => setPostContent(e.target.value)}
+                            required
+                          />
+                        </label>
+                        {postErr ? (
+                          <p className="field-hint" style={{ color: 'var(--color-danger, #b91c1c)' }}>
+                            {postErr}
+                          </p>
+                        ) : null}
+                        {postOk ? <p className="field-hint muted">{postOk}</p> : null}
+                        <div className="teacher-home__quick-panel-actions">
+                          <button type="submit" className="btn btn--primary" disabled={postSaving}>
+                            {postSaving ? 'جاري النشر…' : 'نشر المنشور'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost"
+                            onClick={() => setExpandedQuick(null)}
+                          >
+                            إغلاق
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+                ) : expandedQuick === 'post' && !workspaceId ? (
+                  <div className="teacher-home__quick-panel">
+                    <p className="muted small">لا تتوفر مساحة أستاذ. أكمل إعداد الحساب ثم أعد المحاولة.</p>
+                  </div>
+                ) : null}
+              </div>
+              <Link className="teacher-home__quick-card" to="/t/books#library-add-book">
+                <span className="teacher-home__quick-card-title">+ رفع كتاب</span>
+                <span className="teacher-home__quick-card-desc muted">المكتبة</span>
+              </Link>
+              <Link className="teacher-home__quick-card" to="/t/books#library-add-lesson-scientific">
+                <span className="teacher-home__quick-card-title">+ مادة علمية</span>
+                <span className="teacher-home__quick-card-desc muted">درس أو ملف</span>
+              </Link>
+              <Link
+                className="teacher-home__quick-card"
+                to={scheduleTo}
+                title={firstGroupId == null ? 'أنشئ فوجاً أولاً' : undefined}
+              >
+                <span className="teacher-home__quick-card-title">+ إضافة حصة</span>
+                <span className="teacher-home__quick-card-desc muted">جدولة في فوج</span>
+              </Link>
+            </div>
+          </section>
+
           {workspaceId ? (
             <>
               <section className="section teacher-home__groups" aria-labelledby="teacher-home-groups-h">
@@ -243,78 +600,30 @@ export function TeacherDashboard() {
                     إدارة الأفواج
                   </Link>
                 </div>
-                <p className="muted small teacher-home__groups-hint">
-                  كل سطر: اسم الفوج، المستوى، عادي أو ميسر (وجود منسّق)، اسم المنسق مع تنبيه الرسائل غير المقروءة.
-                </p>
                 <ErrorBanner message={groupsListErr} />
                 {groupsListLoading ? (
                   <Loading label="جاري تحميل الأفواج…" />
                 ) : groupRows.length === 0 ? (
                   <p className="muted">لا توجد أفواج بعد. أنشئ فوجاً من «إدارة الأفواج».</p>
                 ) : (
-                  <div className="teacher-groups__sheet teacher-home__groups-sheet">
-                    <div className="teacher-groups__thead teacher-home__groups-thead" aria-hidden>
-                      <span className="teacher-groups__th teacher-groups__th--accent" />
-                      <span className="teacher-groups__th">اسم الفوج</span>
-                      <span className="teacher-groups__th">المستوى</span>
-                      <span className="teacher-groups__th">عادي / ميسر</span>
-                      <span className="teacher-groups__th">المنسق</span>
-                      <span className="teacher-groups__th teacher-groups__th--meta" />
-                    </div>
-                    <ul className="teacher-groups__list teacher-groups__list--lines">
-                      {groupRows.map((r) => {
-                        const accent =
-                          r.accent_color && /^#[0-9A-Fa-f]{6}$/.test(r.accent_color)
-                            ? r.accent_color
-                            : DEFAULT_GROUP_ACCENT
-                        const coordUnread = r.unread_coordinator_count
-                        const rowBg = rgbaFromHex(accent, 0.08) ?? undefined
-                        const hasCoordinator = Boolean(r.coordinator_name?.trim())
-                        return (
-                          <li key={r.group_id}>
-                            <Link
-                              to={`/t/groups/${r.group_id}`}
-                              className="teacher-groups__row-line"
-                              style={{ backgroundColor: rowBg }}
-                            >
-                              <span
-                                className="teacher-groups__row-accent teacher-groups__row-accent--line"
-                                style={{ backgroundColor: accent }}
-                                aria-hidden
-                              />
-                              <span className="teacher-groups__cell teacher-groups__cell--name">{r.group_name}</span>
-                              <span className="teacher-groups__cell muted">{studyLevelLabelAr(r.study_level)}</span>
-                              <span className="teacher-groups__cell teacher-home__groups-mode" title="وجود منسّق للفوج">
-                                {hasCoordinator ? (
-                                  <span className="pill pill--compact teacher-home__pill-misir">ميسر</span>
-                                ) : (
-                                  <span className="pill pill--compact teacher-home__pill-adi">عادي</span>
-                                )}
-                              </span>
-                              <span className="teacher-groups__cell teacher-groups__cell--coord" title="منسق الفوج">
-                                <span className="teacher-groups__coord-name">
-                                  {r.coordinator_name?.trim() || '—'}
-                                </span>
-                                {coordUnread > 0 ? (
-                                  <span
-                                    className="teacher-groups__coord-unread teacher-groups__coord-unread--inline teacher-home__coord-msg-badge"
-                                    title="رسائل غير مقروءة من المنسق — افتح الصندوق من الأعلى أو من المؤشرات أسفل الصفحة"
-                                  >
-                                    {coordUnread > 99 ? '99+' : coordUnread}
-                                  </span>
-                                ) : null}
-                              </span>
-                              <span className="teacher-groups__cell teacher-groups__cell--meta">
-                                {r.is_owner === false ? (
-                                  <span className="pill teacher-groups__compact-pill">مرتبط</span>
-                                ) : null}
-                              </span>
-                            </Link>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </div>
+                  <>
+                    {STUDY_LEVEL_BLOCKS.map(({ level, heading }) => {
+                      const list = groupsByLevel.map[level]
+                      if (list.length === 0) return null
+                      return (
+                        <div key={level} className="teacher-home__level-block">
+                          <h3 className="teacher-home__level-h3">{heading}</h3>
+                          {renderGroupRows(list)}
+                        </div>
+                      )
+                    })}
+                    {groupsByLevel.other.length > 0 ? (
+                      <div className="teacher-home__level-block">
+                        <h3 className="teacher-home__level-h3">أخرى</h3>
+                        {renderGroupRows(groupsByLevel.other)}
+                      </div>
+                    ) : null}
+                  </>
                 )}
               </section>
 
@@ -365,105 +674,33 @@ export function TeacherDashboard() {
                   </ul>
                 )}
               </section>
+
+              <section className="section teacher-home__coord-inbox" aria-labelledby="teacher-home-coord-h">
+                <h2 id="teacher-home-coord-h" className="library-section__title">
+                  رسائل المنسقين (غير المقروءة)
+                </h2>
+                <p className="muted small teacher-home__coord-inbox-hint">
+                  افتح <Link to="/t/inbox">صندوق المحادثات</Link> للرد على المنسقين.
+                </p>
+                {coordinatorUnreadRows.length === 0 ? (
+                  <p className="muted">لا رسائل منسقين غير مقروءة.</p>
+                ) : (
+                  <ul className="teacher-home__coord-inbox-list">
+                    {coordinatorUnreadRows.map((r) => (
+                      <li key={r.group_id} className="teacher-home__coord-inbox-item">
+                        <Link to="/t/inbox" className="teacher-home__coord-inbox-link">
+                          <span className="teacher-home__coord-inbox-group">{r.group_name}</span>
+                          <span className="teacher-home__coord-msg-badge" title="غير مقروء">
+                            {r.unread_coordinator_count > 99 ? '99+' : r.unread_coordinator_count}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
             </>
           ) : null}
-
-          <section className="teacher-home__identity-card" aria-labelledby="teacher-home-profile-heading">
-            <h2 id="teacher-home-profile-heading" className="visually-hidden">
-              بطاقة التعريف
-            </h2>
-            <div className="teacher-home__identity-media">
-              {profile.avatar_url ? (
-                <img src={profile.avatar_url} alt="" className="teacher-home__identity-avatar" />
-              ) : (
-                <div className="teacher-home__identity-avatar teacher-home__identity-avatar--placeholder" aria-hidden>
-                  {initial}
-                </div>
-              )}
-            </div>
-            <div className="teacher-home__identity-body">
-              <p className="teacher-home__identity-name">{displayName}</p>
-              {bio ? (
-                <p className="teacher-home__bio">{bio}</p>
-              ) : (
-                <p className="teacher-home__bio teacher-home__bio--empty muted">
-                  أضف نبذة تعريفية من{' '}
-                  <Link to="/t/account" className="teacher-home__inline-link">
-                    حسابي
-                  </Link>
-                  .
-                </p>
-              )}
-              <div className="teacher-home__channels">
-                {phone ? (
-                  <a href={`tel:${phone.replace(/\s/g, '')}`} className="btn btn--ghost teacher-home__channel-btn" dir="ltr">
-                    هاتف
-                  </a>
-                ) : null}
-                {waLink ? (
-                  <a
-                    href={waLink}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="btn btn--ghost teacher-home__channel-btn"
-                  >
-                    واتساب
-                  </a>
-                ) : null}
-                {!phone && !waLink ? (
-                  <span className="muted teacher-home__channels-hint">
-                    أضف هاتفاً أو واتساب من <Link to="/t/account">حسابي</Link>.
-                  </span>
-                ) : null}
-              </div>
-              {office ? (
-                <div className="teacher-home__office">
-                  <span className="teacher-home__office-label">أوقات التواصل</span>
-                  <p className="teacher-home__office-text">{office}</p>
-                </div>
-              ) : null}
-            </div>
-          </section>
-
-          {workspaceId ? (
-            <section className="section teacher-home__week-schedule" aria-labelledby="teacher-home-schedule-h">
-              <h2 id="teacher-home-schedule-h" className="library-section__title">
-                حصص هذا الأسبوع
-              </h2>
-              <p className="muted small teacher-home__schedule-hint">
-                انقر على حصة للانتقال إلى الفوج وتعديلها أو حذفها أو إعادة جدولتها.
-              </p>
-              <ScheduleOverlapBanners audit={schedOverlapAudit} />
-              {schedErr ? <p className="muted small">{schedErr}</p> : null}
-              <TeacherWeekScheduleGrid
-                rows={schedRows}
-                weekOffset={weekOffset}
-                onWeekOffsetChange={setWeekOffset}
-                loading={schedLoading}
-                buildEventLink={(ev) => `/t/groups/${ev.group_id}?event=${encodeURIComponent(ev.id)}`}
-                emptyHint="لا حصص هذا الأسبوع. أضفها من صفحة كل فوج أو من «جدول الحصص» في القائمة."
-              />
-            </section>
-          ) : null}
-
-          {!summary ? (
-            <Loading label="جاري التحميل…" />
-          ) : (
-            <section className="teacher-home__stats" aria-label="مؤشرات سريعة">
-              <Link to="/t/groups" className="teacher-home__stat">
-                <span className="teacher-home__stat-value">{summary.groups}</span>
-                <span className="teacher-home__stat-label">أفواج</span>
-              </Link>
-              <Link to="/t/inbox" className="teacher-home__stat">
-                <span className="teacher-home__stat-value">{summary.openConversations}</span>
-                <span className="teacher-home__stat-label">محادثات مفتوحة</span>
-              </Link>
-              <Link to="/t/notifications" className="teacher-home__stat">
-                <span className="teacher-home__stat-value">{summary.unreadNotif}</span>
-                <span className="teacher-home__stat-label">إشعارات غير مقروءة</span>
-              </Link>
-            </section>
-          )}
         </>
       )}
     </div>

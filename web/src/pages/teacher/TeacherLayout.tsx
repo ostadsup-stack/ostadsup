@@ -2,14 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
-import {
-  IconBell,
-  IconCalendar,
-  IconGlobe,
-  IconInbox,
-  IconLayout,
-  IconLogOut,
-} from '../../components/NavIcons'
+import { IconBell, IconCalendar, IconInbox, IconLayout, IconLogOut } from '../../components/NavIcons'
 import { fetchWorkspaceForTeacher } from '../../lib/workspace'
 import { ThemeToggle } from '../../components/ThemeToggle'
 
@@ -162,10 +155,33 @@ export function TeacherLayout() {
                   role="menu"
                   aria-label="روابط سريعة"
                 >
-                  {TEACHER_MENU_LINKS.map((item, i) => (
+                  {workspacePublicSlug ? (
+                    <a
+                      ref={firstMenuItemRef}
+                      role="menuitem"
+                      href={`/p/${encodeURIComponent(workspacePublicSlug)}`}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="teacher-shell__menu-link"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      الصفحة الرسمية
+                    </a>
+                  ) : (
+                    <Link
+                      ref={firstMenuItemRef}
+                      role="menuitem"
+                      to="/t/account"
+                      className="teacher-shell__menu-link"
+                      title="أكمل بيانات مساحتك ليظهر الرابط العام"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      الصفحة الرسمية
+                    </Link>
+                  )}
+                  {TEACHER_MENU_LINKS.map((item) => (
                     <Link
                       key={item.to}
-                      ref={i === 0 ? firstMenuItemRef : undefined}
                       role="menuitem"
                       to={item.to}
                       className="teacher-shell__menu-link"
@@ -223,18 +239,6 @@ export function TeacherLayout() {
         <NavLink to="/t/schedule" className={bottomNavClass}>
           <IconCalendar className="teacher-bottom-nav__icon" />
           <span>الجدول</span>
-        </NavLink>
-        <NavLink
-          to={
-            workspacePublicSlug
-              ? `/p/${encodeURIComponent(workspacePublicSlug)}`
-              : '/t/account'
-          }
-          className={bottomNavClass}
-          title={workspacePublicSlug ? undefined : 'أكمل بيانات مساحتك ليظهر الرابط العام'}
-        >
-          <IconGlobe className="teacher-bottom-nav__icon" />
-          <span>الصفحة الرسمية</span>
         </NavLink>
       </nav>
     </div>

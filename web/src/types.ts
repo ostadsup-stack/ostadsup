@@ -138,6 +138,8 @@ export type ScheduleEvent = {
   meeting_link: string | null
   note: string | null
   status?: string
+  /** موافقة صريحة عند تداخل حصص لنفس الأستاذ بين فوجين (عمود قاعدة البيانات) */
+  teacher_cross_group_overlap_ack?: boolean
   /** يُملأ عند select مع join على profiles */
   profiles?: { full_name: string | null } | null
 }

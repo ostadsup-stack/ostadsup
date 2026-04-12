@@ -2,7 +2,6 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
-import { fetchWorkspaceForTeacher } from '../../lib/workspace'
 import { cohortPageSurfaceStyle, normalizeGroupAccent } from '../../lib/groupTheme'
 import type { Conversation, Message, Profile } from '../../types'
 import { Loading } from '../../components/Loading'
@@ -28,18 +27,12 @@ export function TeacherConversation() {
       return
     }
     setLoading(true)
-    const { workspace, error: wErr } = await fetchWorkspaceForTeacher(session.user.id)
-    if (wErr || !workspace) {
-      setErr(wErr?.message ?? 'لا مساحة')
-      setLoading(false)
-      return
-    }
     const { data: c, error: cErr } = await supabase
       .from('conversations')
       .select('*')
       .eq('id', id)
       .single()
-    if (cErr || !c || c.workspace_id !== workspace.id) {
+    if (cErr || !c) {
       setErr('محادثة غير موجودة')
       setLoading(false)
       return

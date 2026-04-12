@@ -11,7 +11,6 @@ function displayGroupName(n: string | null | undefined) {
   return t.length > 0 ? t : 'بدون اسم'
 }
 
-/** يُفترض أن «الفوج الجديد» هو فوج الحصة الأحدث إنشاءً بين المُتداخلتين */
 function newOldFromCrossPair(cg: CrossGroupOverlapPair) {
   const tA = new Date(cg.createdAtA).getTime()
   const tB = new Date(cg.createdAtB).getTime()
@@ -88,16 +87,6 @@ export function ScheduleOverlapBanners({ audit }: { audit: ScheduleWeekOverlapAu
 
     return (
       <div className="banner banner--info student-home__warn schedule-overlap-cross" role="status">
-        <p>
-          <strong>تداخل زمني بين فوجين مختلفين:</strong> المعرفان <code className="input--ltr">{shortId(cg.gA)}</code>{' '}
-          و <code className="input--ltr">{shortId(cg.gB)}</code> مختلفان — القاعدة تسمح بذلك. إن بدا الاسم متشابهاً
-          في الجدول فهما فوجان منفصلان.
-        </p>
-        <p className="muted small schedule-overlap-cross__hint">
-          «الفوج الجديد» هنا هو فوج الحصة الأحدث إنشاءً بين المُتداخلتين؛ يمكنك تغيير قرارك لاحقاً بإعادة الجدولة أو
-          الانسحاب من أحد الأفواج.
-        </p>
-
         {crossChoice === null ? (
           <div className="schedule-overlap-cross__actions">
             <button type="button" className="btn btn--primary" onClick={() => setCrossChoice('keep-new')}>

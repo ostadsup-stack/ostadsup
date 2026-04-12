@@ -227,6 +227,31 @@ export function TeacherBooksPage() {
     })
   }
 
+  const libraryDeepLinkHandledRef = useRef('')
+
+  useEffect(() => {
+    if (loading) return
+    const raw = location.hash.replace(/^#/, '')
+    if (raw !== 'library-add-book' && raw !== 'library-add-lesson-scientific') {
+      libraryDeepLinkHandledRef.current = ''
+      return
+    }
+    if (libraryDeepLinkHandledRef.current === raw) return
+    libraryDeepLinkHandledRef.current = raw
+    setEditingRow(null)
+    if (raw === 'library-add-book') {
+      setAddPanel('book')
+      setBookScopeValue(groups[0]?.id ?? WORKSPACE_PUBLIC_SCOPE)
+    } else {
+      setAddPanel('lesson_scientific')
+      setLessonCategory('scientific')
+    }
+    addDetailsRef.current?.removeAttribute('open')
+    window.requestAnimationFrame(() => {
+      document.getElementById('library-add')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [loading, location.hash, groups])
+
   function startEdit(row: MaterialRow) {
     setAddPanel(null)
     setEditingRow(row)
