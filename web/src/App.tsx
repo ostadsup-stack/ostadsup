@@ -33,6 +33,8 @@ import { StudentMaterialsPage } from './pages/student/StudentMaterialsPage'
 import { StudentSchedulePage } from './pages/student/StudentSchedulePage'
 import { StudentAccountPage } from './pages/student/StudentAccountPage'
 import { PublicTeacherSite } from './pages/public/PublicTeacherSite'
+import { PublicTeacherPostPage } from './pages/public/PublicTeacherPostPage'
+import { TeacherPublicSitePage } from './pages/teacher/TeacherPublicSitePage'
 
 /** عند وجود جلسة دون profile: إظهار الخطأ أو الاستمرار بالتحميل (مثل HomeRedirect) */
 function ProfileMissingView() {
@@ -98,6 +100,7 @@ function AppRoutes() {
       <Route path="/register" element={<PublicLayout><RegisterPage /></PublicLayout>} />
       <Route path="/" element={<HomeRedirect />} />
       <Route path="/p/:slug" element={<PublicTeacherSite />} />
+      <Route path="/p/:slug/posts/:postId" element={<PublicTeacherPostPage />} />
 
       <Route
         path="/t"
@@ -109,6 +112,7 @@ function AppRoutes() {
       >
         <Route index element={<TeacherDashboard />} />
         <Route path="account" element={<TeacherAccountPage />} />
+        <Route path="public-site" element={<TeacherPublicSitePage />} />
         <Route path="books" element={<TeacherBooksPage />} />
         <Route path="posts" element={<TeacherPostsPage />} />
         <Route path="groups" element={<TeacherGroups />} />

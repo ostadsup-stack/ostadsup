@@ -120,7 +120,6 @@ export function TeacherDashboard() {
     return todayRows.filter((ev) => sameLocalDay(new Date(ev.starts_at), now))
   }, [todayRows])
 
-  const hasOwnedGroup = useMemo(() => groupRows.some((r) => r.is_owner !== false), [groupRows])
   const firstGroupId = useMemo(() => groupRows[0]?.group_id ?? null, [groupRows])
 
   const groupsByLevel = useMemo(() => {
@@ -227,15 +226,13 @@ export function TeacherDashboard() {
       setAnnErr(null)
       setAnnOk(null)
       setAnnGroupId((id) => id || groupRows[0]?.group_id || '')
-      if (!hasOwnedGroup) setAnnAudience('group')
     }
     if (expandedQuick === 'post') {
       setPostErr(null)
       setPostOk(null)
       setPostGroupId((id) => id || groupRows[0]?.group_id || '')
-      if (!hasOwnedGroup) setPostAudience('group')
     }
-  }, [expandedQuick, groupRows, hasOwnedGroup])
+  }, [expandedQuick, groupRows])
 
   const submitQuickPost = useCallback(
     async (
@@ -257,10 +254,6 @@ export function TeacherDashboard() {
       const trimmed = content.trim()
       if (!trimmed) {
         setLocalErr('أدخل نص الإعلان أو المنشور')
-        return
-      }
-      if (audience === 'workspace' && !hasOwnedGroup) {
-        setLocalErr('نشر «لكل الطلبة» يتطلب فوجاً تملكه في مساحتك')
         return
       }
       if (audience === 'group' && !groupId) {
@@ -292,6 +285,7 @@ export function TeacherDashboard() {
           title: title.trim() || null,
           content: trimmed,
           post_type: kind === 'announce' ? 'announcement' : 'general',
+          is_public_on_site: audience === 'workspace',
         }
         const { error } = await supabase.from('posts').insert(row)
         if (error) {
@@ -304,7 +298,7 @@ export function TeacherDashboard() {
         setSaving(false)
       }
     },
-    [session?.user?.id, workspaceId, hasOwnedGroup],
+    [session?.user?.id, workspaceId],
   )
 
   if (!session?.user?.id) return <Loading />
@@ -381,9 +375,7 @@ export function TeacherDashboard() {
                               setAnnAudience(e.target.value === 'workspace' ? 'workspace' : 'group')
                             }
                           >
-                            <option value="workspace" disabled={!hasOwnedGroup}>
-                              كل الطلبة (كل أفواج مساحتي)
-                            </option>
+                            <option value="workspace">كل الطلبة (كل أفواج المساحة)</option>
                             <option value="group">فوج محدد</option>
                           </select>
                         </label>
@@ -402,11 +394,6 @@ export function TeacherDashboard() {
                               ))}
                             </select>
                           </label>
-                        ) : null}
-                        {!hasOwnedGroup ? (
-                          <p className="field-hint muted small">
-                            خيار «كل الطلبة» متاح عند وجود فوج تملكه في مساحتك. يمكنك النشر لفوج مرتبط من القائمة.
-                          </p>
                         ) : null}
                         <label>
                           عنوان (اختياري)
@@ -499,9 +486,7 @@ export function TeacherDashboard() {
                               setPostAudience(e.target.value === 'workspace' ? 'workspace' : 'group')
                             }
                           >
-                            <option value="workspace" disabled={!hasOwnedGroup}>
-                              كل الطلبة (كل أفواج مساحتي)
-                            </option>
+                            <option value="workspace">كل الطلبة (كل أفواج المساحة)</option>
                             <option value="group">فوج محدد</option>
                           </select>
                         </label>
@@ -520,11 +505,6 @@ export function TeacherDashboard() {
                               ))}
                             </select>
                           </label>
-                        ) : null}
-                        {!hasOwnedGroup ? (
-                          <p className="field-hint muted small">
-                            خيار «كل الطلبة» يظهر عند وجود فوج تملكه في مساحتك.
-                          </p>
                         ) : null}
                         <label>
                           عنوان (اختياري)

@@ -12,6 +12,8 @@ export type HubPostPinned = {
   title: string | null
   content: string
   createdAt: string
+  authorName: string | null
+  scope: 'group' | 'workspace'
 }
 
 export type HubPostPerTeacher = {
@@ -21,6 +23,16 @@ export type HubPostPerTeacher = {
   title: string | null
   contentPreview: string
   createdAt: string
+  scope: 'group' | 'workspace'
+}
+
+/** منشورات حائط الفوج من حسابات المنسقين في نفس الفوج */
+export type HubCoordinatorAnnouncement = {
+  id: string
+  title: string | null
+  content: string
+  createdAt: string
+  authorName: string | null
 }
 
 type ParticipantProfile = { full_name: string | null; role: string } | null
@@ -161,26 +173,47 @@ type PostRow = {
   created_at: string
   author_id: string
   pinned: boolean
+  group_id: string | null
+  scope: 'group' | 'workspace'
   profiles: { full_name: string | null; role: string } | null
 }
 
-/** منشورات مثبتة + آخر منشور لكل أستاذ (حسب author_id) */
+/** منشورات مثبتة + إعلانات المنسقين + آخر منشور لكل أستاذ (حسب author_id) */
 export async function fetchStudentHubPosts(
   supabase: SupabaseClient,
   workspaceId: string,
   groupId: string,
-): Promise<{ pinned: HubPostPinned[]; perTeacher: HubPostPerTeacher[]; error: string | null }> {
-  const { data, error } = await supabase
-    .from('posts')
-    .select('id, title, content, created_at, author_id, pinned, profiles(full_name, role)')
-    .eq('workspace_id', workspaceId)
-    .is('deleted_at', null)
-    .or(`group_id.eq.${groupId},scope.eq.workspace`)
-    .order('pinned', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(120)
+): Promise<{
+  pinned: HubPostPinned[]
+  coordinatorAnnouncements: HubCoordinatorAnnouncement[]
+  perTeacher: HubPostPerTeacher[]
+  error: string | null
+}> {
+  const [{ data, error }, coordRes] = await Promise.all([
+    supabase
+      .from('posts')
+      .select('id, title, content, created_at, author_id, pinned, group_id, scope, profiles(full_name, role)')
+      .eq('workspace_id', workspaceId)
+      .is('deleted_at', null)
+      .or(`group_id.eq.${groupId},scope.eq.workspace`)
+      .order('pinned', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(120),
+    supabase
+      .from('group_members')
+      .select('user_id')
+      .eq('group_id', groupId)
+      .eq('role_in_group', 'coordinator')
+      .eq('status', 'active'),
+  ])
 
-  if (error) return { pinned: [], perTeacher: [], error: error.message }
+  if (error) return { pinned: [], coordinatorAnnouncements: [], perTeacher: [], error: error.message }
+
+  const coordinatorAuthorIds = new Set(
+    coordRes.error
+      ? []
+      : (coordRes.data ?? []).map((r) => r.user_id as string).filter(Boolean),
+  )
 
   const rows: PostRow[] = (data ?? []).map((raw) => {
     const r = raw as {
@@ -190,6 +223,8 @@ export async function fetchStudentHubPosts(
       created_at: string
       author_id: string
       pinned: boolean
+      group_id: string | null
+      scope: 'group' | 'workspace'
       profiles: unknown
     }
     return {
@@ -199,6 +234,8 @@ export async function fetchStudentHubPosts(
       created_at: r.created_at,
       author_id: r.author_id,
       pinned: r.pinned,
+      group_id: r.group_id,
+      scope: r.scope,
       profiles: singleProfile(r.profiles),
     }
   })
@@ -211,7 +248,25 @@ export async function fetchStudentHubPosts(
       title: row.title,
       content: row.content,
       createdAt: row.created_at,
+      authorName: row.profiles?.full_name?.trim() ?? null,
+      scope: row.scope,
     })
+  }
+
+  const coordinatorAnnouncements: HubCoordinatorAnnouncement[] = []
+  if (coordinatorAuthorIds.size > 0) {
+    const coordRows = rows
+      .filter((row) => coordinatorAuthorIds.has(row.author_id))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    for (const row of coordRows.slice(0, 12)) {
+      coordinatorAnnouncements.push({
+        id: row.id,
+        title: row.title,
+        content: row.content,
+        createdAt: row.created_at,
+        authorName: row.profiles?.full_name?.trim() ?? null,
+      })
+    }
   }
 
   const perTeacher: HubPostPerTeacher[] = []
@@ -230,8 +285,9 @@ export async function fetchStudentHubPosts(
       title: row.title,
       contentPreview: text.length > 140 ? `${text.slice(0, 140)}…` : text,
       createdAt: row.created_at,
+      scope: row.scope,
     })
   }
 
-  return { pinned, perTeacher, error: null }
+  return { pinned, coordinatorAnnouncements, perTeacher, error: null }
 }

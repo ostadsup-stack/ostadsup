@@ -51,6 +51,9 @@ export function TeacherAccountPage() {
           <p className="teacher-account__public-url wrap" dir="ltr">
             <a href={publicUrl}>{publicUrl}</a>
           </p>
+          <p className="muted small" style={{ marginTop: '0.65rem' }}>
+            <Link to="/t/public-site">تعديل الصفحة الرسمية والأقسام والنشر للعموم</Link>
+          </p>
         </div>
       ) : (
         <p className="muted small">لم يُعثر على مساحة (slug). أنشئ فوجاً أو راجع إعداد Supabase.</p>

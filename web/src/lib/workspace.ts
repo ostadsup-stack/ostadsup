@@ -1,12 +1,47 @@
 import { supabase } from './supabase'
 
-export async function fetchWorkspaceForTeacher(teacherId: string) {
+/** مساحة يملكها الأستاذ (إن وُجدت)، دون الاعتماد على group_staff. */
+export async function fetchOwnedWorkspaceForTeacher(teacherId: string) {
   const { data, error } = await supabase
     .from('workspaces')
     .select('*')
     .eq('owner_teacher_id', teacherId)
     .maybeSingle()
   return { workspace: data, error }
+}
+
+/**
+ * مساحة العمل للواجهة والمسارات: ملك الأستاذ، أو مساحة المضيف عند الأستاذ المرتبط بفوج فقط.
+ */
+export async function fetchWorkspaceForTeacher(teacherId: string) {
+  const { workspace: owned, error: ownedErr } = await fetchOwnedWorkspaceForTeacher(teacherId)
+  if (ownedErr) return { workspace: null, error: ownedErr }
+  if (owned) return { workspace: owned, error: null }
+
+  const { data: gs, error: gsErr } = await supabase
+    .from('group_staff')
+    .select('group_id')
+    .eq('teacher_id', teacherId)
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle()
+  if (gsErr) return { workspace: null, error: gsErr }
+  const gid = gs?.group_id as string | undefined
+  if (!gid) return { workspace: null, error: null }
+
+  const { data: g, error: gErr } = await supabase
+    .from('groups')
+    .select('workspace_id')
+    .eq('id', gid)
+    .maybeSingle()
+  if (gErr || !g?.workspace_id) return { workspace: null, error: gErr ?? null }
+
+  const { data: ws, error: wsErr } = await supabase
+    .from('workspaces')
+    .select('*')
+    .eq('id', g.workspace_id as string)
+    .maybeSingle()
+  return { workspace: ws, error: wsErr }
 }
 
 export function shareWhatsAppMessage(text: string) {

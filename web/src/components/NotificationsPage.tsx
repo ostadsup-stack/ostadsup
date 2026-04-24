@@ -170,9 +170,11 @@ export function NotificationsPage() {
           ? 'لا يمكنك قبول هذا الطلب.'
           : payload?.error === 'slot_already_free'
             ? 'الفترة لم تعد محجوزة.'
-            : payload?.error === 'not_pending'
-              ? 'الطلب لم يعد قيد الانتظار.'
-              : 'تعذّر قبول الطلب.',
+            : payload?.error === 'proposed_slot_group_overlap'
+              ? 'الفترة المقترحة تتداخل مع حصة أخرى في نفس الفوج؛ لا يمكن إتمام القبول.'
+              : payload?.error === 'not_pending'
+                ? 'الطلب لم يعد قيد الانتظار.'
+                : 'تعذّر قبول الطلب.',
       )
       return
     }

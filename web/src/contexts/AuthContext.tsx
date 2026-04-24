@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { runSerializedAuth } from '../lib/authSessionQueue'
 import { supabase } from '../lib/supabase'
 import type { Profile } from '../types'
 
@@ -134,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await loadProfile(uid)
   }, [loadProfile, session?.user?.id])
 
-  const resumeAuthRefresh = useCallback(() => {
+  const resumeAuthRefreshInner = useCallback(() => {
     try {
       const auth = supabase.auth as unknown as { startAutoRefresh?: () => void }
       auth.startAutoRefresh?.()
@@ -144,7 +145,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void (async () => {
       let uid: string | undefined
       try {
-        const { data } = await withTimeout(supabase.auth.getSession(), SESSION_GET_TIMEOUT_MS)
+        const { data } = await withTimeout(
+          runSerializedAuth(() => supabase.auth.getSession()),
+          SESSION_GET_TIMEOUT_MS,
+        )
         uid = data.session?.user?.id
         setSession(data.session)
       } catch {
@@ -160,6 +164,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })()
   }, [loadProfile])
 
+  const resumeDebounceRef = useRef<number | null>(null)
+  const resumeAuthRefresh = useCallback(() => {
+    if (resumeDebounceRef.current != null) window.clearTimeout(resumeDebounceRef.current)
+    resumeDebounceRef.current = window.setTimeout(() => {
+      resumeDebounceRef.current = null
+      resumeAuthRefreshInner()
+    }, 320)
+  }, [resumeAuthRefreshInner])
+
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === 'visible') resumeAuthRefresh()
@@ -168,6 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     document.addEventListener('visibilitychange', onVis)
     window.addEventListener('online', onOnline)
     return () => {
+      if (resumeDebounceRef.current != null) window.clearTimeout(resumeDebounceRef.current)
       document.removeEventListener('visibilitychange', onVis)
       window.removeEventListener('online', onOnline)
     }
@@ -178,7 +192,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initialAuthResolved.current = false
     ;(async () => {
       try {
-        const { data } = await withTimeout(supabase.auth.getSession(), SESSION_GET_TIMEOUT_MS)
+        const { data } = await withTimeout(
+          runSerializedAuth(() => supabase.auth.getSession()),
+          SESSION_GET_TIMEOUT_MS,
+        )
         if (cancelled) return
         setSession(data.session)
         if (data.session?.user?.id) await loadProfile(data.session.user.id)

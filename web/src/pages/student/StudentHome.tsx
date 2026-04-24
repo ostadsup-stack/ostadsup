@@ -12,6 +12,7 @@ import {
 import {
   fetchStudentHubMessagePreviews,
   fetchStudentHubPosts,
+  type HubCoordinatorAnnouncement,
   type HubMessagePreview,
   type HubPostPerTeacher,
   type HubPostPinned,
@@ -31,6 +32,7 @@ export function StudentHome() {
   const [scheduleEvents, setScheduleEvents] = useState<ScheduleEvent[]>([])
   const [publicSlug, setPublicSlug] = useState<string | null>(null)
   const [pinnedPosts, setPinnedPosts] = useState<HubPostPinned[]>([])
+  const [coordinatorAnnouncements, setCoordinatorAnnouncements] = useState<HubCoordinatorAnnouncement[]>([])
   const [postsPerTeacher, setPostsPerTeacher] = useState<HubPostPerTeacher[]>([])
   const [coordMessage, setCoordMessage] = useState<HubMessagePreview | null>(null)
   const [teacherMessages, setTeacherMessages] = useState<HubMessagePreview[]>([])
@@ -82,6 +84,7 @@ export function StudentHome() {
         setScheduleEvents([])
         setPublicSlug(null)
         setPinnedPosts([])
+        setCoordinatorAnnouncements([])
         setPostsPerTeacher([])
         setCoordMessage(null)
         setTeacherMessages([])
@@ -116,6 +119,7 @@ export function StudentHome() {
       setErr(chunkErr)
       setScheduleEvents((ev.data as ScheduleEvent[]) ?? [])
       setPinnedPosts(hubPosts.pinned)
+      setCoordinatorAnnouncements(hubPosts.coordinatorAnnouncements)
       setPostsPerTeacher(hubPosts.perTeacher)
       setCoordMessage(hubMsgs.coordinator)
       setTeacherMessages(hubMsgs.teachers)
@@ -173,12 +177,12 @@ export function StudentHome() {
       style={primaryCohortAccent ? cohortPageSurfaceStyle(primaryCohortAccent) : undefined}
     >
       <PageHeader
-        title={hasGroup ? 'قلب الفوج' : 'الرئيسية'}
+        title={hasGroup ? (primaryGroupName?.trim() || 'فوجي') : 'الرئيسية'}
         subtitle={
           hasGroup
             ? primaryGroupName
-              ? `ملخص «${primaryGroupName}»: رسائل، منشورات، وجدولك.`
-              : 'ملخص فوجك، الرسائل، المنشورات، والجدول.'
+              ? `«${primaryGroupName}»: حصص اليوم، إعلانات المنسقين، آخر نشاط للأساتذة، والتواصل.`
+              : 'حصص اليوم، إعلانات المنسقين، آخر منشور لكل أستاذ، والتواصل مع المنسق والأستاذ.'
             : 'انضم لفوجك للوصول إلى الجدول والمنشورات والرسائل.'
         }
       />
@@ -204,6 +208,199 @@ export function StudentHome() {
 
       {primaryGroupId ? (
         <>
+          <section className="section student-home__section">
+            <div className="student-home__section-head">
+              <h2>حصص اليوم</h2>
+              <Link to="/s/schedule" className="btn btn--ghost btn--small">
+                الجدول الكامل
+              </Link>
+            </div>
+            {todayEvents.length === 0 ? (
+              <p className="muted">لا حصص مجدولة اليوم.</p>
+            ) : (
+              <ul className="schedule-list">
+                {todayEvents.map((ev) => (
+                  <li key={ev.id} className="schedule-list__item">
+                    <strong>{ev.subject_name ?? (ev.event_type === 'seminar' ? 'ندوة' : 'حصة')}</strong> —{' '}
+                    {scheduleEventCreatorLabel(ev)} —{' '}
+                    {new Date(ev.starts_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })} →{' '}
+                    {new Date(ev.ends_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })}{' '}
+                    <span className="muted">({ev.mode === 'online' ? 'عن بُعد' : 'حضوري'})</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="section student-home__section" aria-label="إعلانات المنسقين">
+            <div className="student-home__section-head">
+              <h2>إعلانات المنسقين</h2>
+              <Link to="/s/posts" className="btn btn--ghost btn--small">
+                كل المنشورات
+              </Link>
+            </div>
+            <p className="muted small">منشورات وإعلانات من حسابات المنسقين في فوجك (بلون الفوج).</p>
+            {coordinatorAnnouncements.length === 0 ? (
+              <p className="muted">لا إعلانات من المنسقين في آخر التحديثات المعروضة.</p>
+            ) : (
+              <ul className="post-list">
+                {coordinatorAnnouncements.map((p) => (
+                  <li key={p.id} className="post-card post-card--cohort">
+                    <span className="pill pill--coord">منسق</span>
+                    <p className="student-home__post-byline small">
+                      <span className="student-home__post-byline-name">{p.authorName?.trim() || 'منسق'}</span>
+                      <span className="muted" aria-hidden="true">
+                        {' — '}
+                      </span>
+                      <time dateTime={p.createdAt}>{new Date(p.createdAt).toLocaleString('ar-MA')}</time>
+                    </p>
+                    {p.title ? <h4>{p.title}</h4> : null}
+                    <p>{p.content.length > 200 ? `${p.content.slice(0, 200)}…` : p.content}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="section student-home__section">
+            <div className="student-home__section-head">
+              <h2>آخر منشور أو إعلان لكل أستاذ</h2>
+              <Link to="/s/posts" className="btn btn--ghost btn--small">
+                عرض الكل
+              </Link>
+            </div>
+            {postsPerTeacher.length === 0 ? (
+              <p className="muted">لا منشورات من الأساتذة بعد.</p>
+            ) : (
+              <ul className="student-home__preview-list">
+                {postsPerTeacher.map((p) => (
+                  <li
+                    key={p.authorId}
+                    className={`post-card ${p.scope === 'group' ? 'post-card--cohort' : 'post-card--workspace-general'}`}
+                  >
+                    <p className="student-home__post-byline small">
+                      <span className="student-home__post-byline-name">{p.authorName}</span>
+                      <span className="muted" aria-hidden="true">
+                        {' — '}
+                      </span>
+                      <time dateTime={p.createdAt}>{new Date(p.createdAt).toLocaleString('ar-MA')}</time>
+                    </p>
+                    <span className="pill">{p.scope === 'group' ? 'الفوج' : 'عام'}</span>
+                    {p.title ? (
+                      <p className="small">
+                        <strong>{p.title}</strong>
+                      </p>
+                    ) : null}
+                    <p>{p.contentPreview}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {pinnedPosts.length > 0 ? (
+            <section className="section student-home__section">
+              <div className="student-home__section-head">
+                <h2>منشورات مثبتة</h2>
+                <Link to="/s/posts" className="btn btn--ghost btn--small">
+                  كل المنشورات
+                </Link>
+              </div>
+              <ul className="post-list">
+                {pinnedPosts.map((p) => (
+                  <li
+                    key={p.id}
+                    className={`post-card ${p.scope === 'group' ? 'post-card--cohort' : 'post-card--workspace-general'}`}
+                  >
+                    <span className="pill">مثبت</span>
+                    <p className="student-home__post-byline small">
+                      <span className="student-home__post-byline-name">{p.authorName?.trim() || 'مؤلف المنشور'}</span>
+                      <span className="muted" aria-hidden="true">
+                        {' — '}
+                      </span>
+                      <time dateTime={p.createdAt}>{new Date(p.createdAt).toLocaleString('ar-MA')}</time>
+                    </p>
+                    <span className="pill">{p.scope === 'group' ? 'الفوج' : 'عام'}</span>
+                    {p.title ? <h4>{p.title}</h4> : null}
+                    <p>{p.content.length > 160 ? `${p.content.slice(0, 160)}…` : p.content}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          <section className="section student-home__section" aria-label="التواصل مع المنسق">
+            <div className="student-home__section-head">
+              <h2>التواصل مع المنسق</h2>
+              <Link to="/s/messages" className="btn btn--ghost btn--small">
+                كل الرسائل
+              </Link>
+            </div>
+            <p className="muted small">آخر نشاط في محادثتك مع المنسق؛ افتحها للمتابعة أو ابدأ من صفحة الفوج.</p>
+            <p className="student-home__group-actions">
+              <Link className="btn btn--secondary btn--small" to={`/s/groups/${primaryGroupId}`}>
+                صفحة الفوج (مراسلة المنسق)
+              </Link>
+            </p>
+            {coordMessage ? (
+              <Link
+                to={`/s/messages/${coordMessage.conversationId}`}
+                className="student-home__preview-link"
+                style={primaryCohortAccent ? cohortListLinkAccentStyle(primaryCohortAccent) : undefined}
+              >
+                <span className="student-home__preview-meta">{coordMessage.headline}</span>
+                <span className="student-home__preview-snippet">
+                  {coordMessage.body.length > 120 ? `${coordMessage.body.slice(0, 120)}…` : coordMessage.body}
+                </span>
+                <time className="muted small">
+                  {new Date(coordMessage.createdAt).toLocaleString('ar-MA')}
+                </time>
+              </Link>
+            ) : (
+              <p className="muted">لا محادثة مع المنسق بعد. استخدم «صفحة الفوج» أعلاه لبدء التواصل.</p>
+            )}
+          </section>
+
+          <section className="section student-home__section" aria-label="التواصل مع الأستاذ">
+            <div className="student-home__section-head">
+              <h2>التواصل مع الأستاذ</h2>
+              <Link to="/s/messages" className="btn btn--ghost btn--small">
+                صندوق الرسائل
+              </Link>
+            </div>
+            <p className="muted small">قناة خاصة مع كل أستاذ؛ آخر رسالة تظهر أدناه.</p>
+            <p className="student-home__group-actions">
+              <Link className="btn btn--secondary btn--small" to={`/s/groups/${primaryGroupId}`}>
+                صفحة الفوج (مراسلة أستاذ)
+              </Link>
+            </p>
+            {teacherMessages.length === 0 ? (
+              <p className="muted">لا محادثات مع الأساتذة بعد.</p>
+            ) : (
+              <ul className="student-home__preview-list">
+                {teacherMessages.map((m) => (
+                  <li key={m.conversationId}>
+                    <Link
+                      to={`/s/messages/${m.conversationId}`}
+                      className={
+                        primaryCohortAccent
+                          ? 'student-home__preview-link list-links__link--cohort'
+                          : 'student-home__preview-link'
+                      }
+                      style={primaryCohortAccent ? cohortListLinkAccentStyle(primaryCohortAccent) : undefined}
+                    >
+                      <span className="student-home__preview-meta">{m.headline}</span>
+                      <span className="student-home__preview-snippet">
+                        {m.body.length > 100 ? `${m.body.slice(0, 100)}…` : m.body}
+                      </span>
+                      <time className="muted small">{new Date(m.createdAt).toLocaleString('ar-MA')}</time>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           {nextUpcomingEvent ? (
             <section className="section student-home__section student-home__next-slot" aria-label="الحصة التالية">
               <h2 className="student-home__next-slot-title">الحصة التالية</h2>
@@ -272,134 +469,6 @@ export function StudentHome() {
               </Link>
             </section>
           ) : null}
-
-          <section className="section student-home__section">
-            <div className="student-home__section-head">
-              <h2>آخر رسالة للمنسق</h2>
-              <Link to="/s/messages" className="btn btn--ghost btn--small">
-                كل الرسائل
-              </Link>
-            </div>
-            {coordMessage ? (
-              <Link
-                to={`/s/messages/${coordMessage.conversationId}`}
-                className="student-home__preview-link"
-                style={primaryCohortAccent ? cohortListLinkAccentStyle(primaryCohortAccent) : undefined}
-              >
-                <span className="student-home__preview-meta">{coordMessage.headline}</span>
-                <span className="student-home__preview-snippet">
-                  {coordMessage.body.length > 120 ? `${coordMessage.body.slice(0, 120)}…` : coordMessage.body}
-                </span>
-                <time className="muted small">
-                  {new Date(coordMessage.createdAt).toLocaleString('ar-MA')}
-                </time>
-              </Link>
-            ) : (
-              <p className="muted">لا محادثة منسق بعد. يمكنك البدء من صفحة الفوج.</p>
-            )}
-          </section>
-
-          <section className="section student-home__section">
-            <div className="student-home__section-head">
-              <h2>آخر رسالة لكل أستاذ</h2>
-              <Link to="/s/messages" className="btn btn--ghost btn--small">
-                صندوق الرسائل
-              </Link>
-            </div>
-            {teacherMessages.length === 0 ? (
-              <p className="muted">لا محادثات مع الأساتذة بعد.</p>
-            ) : (
-              <ul className="student-home__preview-list">
-                {teacherMessages.map((m) => (
-                  <li key={m.conversationId}>
-                    <Link
-                      to={`/s/messages/${m.conversationId}`}
-                      className={
-                        primaryCohortAccent
-                          ? 'student-home__preview-link list-links__link--cohort'
-                          : 'student-home__preview-link'
-                      }
-                      style={primaryCohortAccent ? cohortListLinkAccentStyle(primaryCohortAccent) : undefined}
-                    >
-                      <span className="student-home__preview-meta">{m.headline}</span>
-                      <span className="student-home__preview-snippet">
-                        {m.body.length > 100 ? `${m.body.slice(0, 100)}…` : m.body}
-                      </span>
-                      <time className="muted small">{new Date(m.createdAt).toLocaleString('ar-MA')}</time>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          {pinnedPosts.length > 0 ? (
-            <section className="section student-home__section">
-              <div className="student-home__section-head">
-                <h2>منشورات مثبتة</h2>
-                <Link to="/s/posts" className="btn btn--ghost btn--small">
-                  كل المنشورات
-                </Link>
-              </div>
-              <ul className="post-list">
-                {pinnedPosts.map((p) => (
-                  <li key={p.id} className="post-card">
-                    <span className="pill">مثبت</span>
-                    {p.title ? <h4>{p.title}</h4> : null}
-                    <p>{p.content.length > 160 ? `${p.content.slice(0, 160)}…` : p.content}</p>
-                    <time className="muted small">{new Date(p.createdAt).toLocaleString('ar-MA')}</time>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-
-          <section className="section student-home__section">
-            <div className="student-home__section-head">
-              <h2>آخر منشور لكل أستاذ</h2>
-              <Link to="/s/posts" className="btn btn--ghost btn--small">
-                عرض الكل
-              </Link>
-            </div>
-            {postsPerTeacher.length === 0 ? (
-              <p className="muted">لا منشورات من الأساتذة بعد.</p>
-            ) : (
-              <ul className="student-home__preview-list">
-                {postsPerTeacher.map((p) => (
-                  <li key={p.authorId} className="post-card">
-                    <h4 className="student-home__preview-meta">{p.authorName}</h4>
-                    {p.title ? <p className="small"><strong>{p.title}</strong></p> : null}
-                    <p>{p.contentPreview}</p>
-                    <time className="muted small">{new Date(p.createdAt).toLocaleString('ar-MA')}</time>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="section student-home__section">
-            <div className="student-home__section-head">
-              <h2>حصص اليوم</h2>
-              <Link to="/s/schedule" className="btn btn--ghost btn--small">
-                الجدول الكامل
-              </Link>
-            </div>
-            {todayEvents.length === 0 ? (
-              <p className="muted">لا حصص مجدولة اليوم.</p>
-            ) : (
-              <ul className="schedule-list">
-                {todayEvents.map((ev) => (
-                  <li key={ev.id} className="schedule-list__item">
-                    <strong>{ev.subject_name ?? (ev.event_type === 'seminar' ? 'ندوة' : 'حصة')}</strong> —{' '}
-                    {scheduleEventCreatorLabel(ev)} —{' '}
-                    {new Date(ev.starts_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })} →{' '}
-                    {new Date(ev.ends_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })}{' '}
-                    <span className="muted">({ev.mode === 'online' ? 'عن بُعد' : 'حضوري'})</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
 
           <section className="section student-home__section">
             <div className="student-home__section-head">

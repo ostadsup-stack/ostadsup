@@ -1,3 +1,28 @@
+/** عنصر في الملف الأكاديمي للصفحة العامة (يُخزَّن في profiles.academic_profile JSONB). */
+export type AcademicDegree = { title: string; institution?: string | null; year?: string | null }
+export type AcademicTextBlock = { label: string; body: string }
+
+export type AcademicProfile = {
+  rankTitle?: string | null
+  institution?: string | null
+  degrees?: AcademicDegree[]
+  training?: AcademicTextBlock[]
+  teachingExperience?: AcademicTextBlock[]
+  researchInterests?: string[]
+  languages?: string[]
+}
+
+/** إعدادات الصفحة العامة (workspaces.public_site_settings JSONB). */
+export type PublicSiteSettings = {
+  /** عنوان مخصّص للشريط العلوي للزائر؛ إن وُجد يُستخدم بدل القالب الافتراضي مع الاسم. */
+  page_header_title?: string | null
+  section_order?: string[]
+  sections_visible?: Partial<
+    Record<'hero' | 'academic' | 'posts' | 'library' | 'schedule' | 'cohorts' | 'contact' | 'footer', boolean>
+  >
+  contact_visible?: Partial<Record<'phone' | 'whatsapp' | 'email' | 'social' | 'office_hours', boolean>>
+}
+
 export type Profile = {
   id: string
   full_name: string
@@ -10,6 +35,9 @@ export type Profile = {
   specialty?: string | null
   social_links?: Record<string, string> | null
   cv_path?: string | null
+  /** JSON — يُحرَّر من «الصفحة الرسمية» */
+  academic_profile?: AcademicProfile | null
+  public_contact_email?: string | null
   status: string
   created_at: string
 }
@@ -20,6 +48,7 @@ export type Workspace = {
   display_name: string
   slug: string
   status: string
+  public_site_settings?: PublicSiteSettings | null
 }
 
 export type StudyLevel = 'licence' | 'master' | 'doctorate'
@@ -42,6 +71,7 @@ export type Group = {
   cohort_sequence?: number | null
   cohort_suffix?: string | null
   status: string
+  show_on_public_site?: boolean
 }
 
 /** صف من RPC teacher_group_list_summaries */
@@ -80,6 +110,7 @@ export type GroupMember = {
 export type Post = {
   id: string
   workspace_id: string
+  author_id: string
   group_id: string | null
   scope: 'group' | 'workspace'
   title: string | null
@@ -88,11 +119,18 @@ export type Post = {
   pinned: boolean
   created_at: string
   deleted_at?: string | null
+  /** مخفي عن الطلاب والزائر؛ يظهر لصاحب المنشور فقط */
+  hidden_at?: string | null
+  attachment_url?: string | null
+  updated_at?: string
+  /** منشور مستوى المساحة يظهر في الصفحة العامة عند true */
+  is_public_on_site?: boolean
 }
 
 export type Material = {
   id: string
   workspace_id?: string
+  created_by?: string
   group_id: string | null
   title: string
   material_type: string
@@ -113,6 +151,10 @@ export type PublicMaterialRow = {
   link_kind: string | null
   external_url: string | null
   group_name: string
+  description?: string | null
+  cover_path?: string | null
+  file_path?: string | null
+  publication_year?: number | null
 }
 
 export type PublicPostRow = {
@@ -120,7 +162,48 @@ export type PublicPostRow = {
   title: string | null
   content: string
   created_at: string
+  updated_at?: string
   pinned: boolean
+  post_type?: string | null
+  attachment_url?: string | null
+}
+
+export type PublicGroupTeaserRow = {
+  id: string
+  group_name: string
+  subject_name: string | null
+  academic_year: string | null
+  study_level: string
+  university: string | null
+  faculty: string | null
+}
+
+export type PublicScheduleTeaserRow = {
+  id: string
+  starts_at: string
+  ends_at: string
+  subject_name: string | null
+  event_type: string
+  mode: string
+  group_label: string
+}
+
+/** صف واحد من RPC public_teacher_by_workspace_slug */
+export type PublicTeacherPageRow = {
+  workspace_display_name: string
+  workspace_slug: string
+  full_name: string
+  specialty: string | null
+  bio: string | null
+  avatar_url: string | null
+  phone: string | null
+  whatsapp: string | null
+  office_hours: string | null
+  social_links: Record<string, string> | null
+  cv_path: string | null
+  academic_profile: unknown
+  public_contact_email: string | null
+  public_site_settings: unknown
 }
 
 export type ScheduleEvent = {
@@ -140,6 +223,8 @@ export type ScheduleEvent = {
   status?: string
   /** موافقة صريحة عند تداخل حصص لنفس الأستاذ بين فوجين (عمود قاعدة البيانات) */
   teacher_cross_group_overlap_ack?: boolean
+  /** إظهار في معاينة الجدول على الصفحة العامة */
+  show_on_public_site?: boolean
   /** يُملأ عند select مع join على profiles */
   profiles?: { full_name: string | null } | null
 }

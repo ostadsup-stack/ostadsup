@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
-import { fetchWorkspaceForTeacher } from '../../lib/workspace'
 import { shareWhatsAppMessage } from '../../lib/workspace'
 import { cohortPageSurfaceStyle, DEFAULT_GROUP_ACCENT, normalizeGroupAccent } from '../../lib/groupTheme'
 import { whatsappHref } from '../../lib/whatsapp'
@@ -55,7 +54,6 @@ export function TeacherGroupDetail() {
   const [err, setErr] = useState<string | null>(null)
   const [group, setGroup] = useState<Group | null>(null)
   const [groupOwnerWorkspaceId, setGroupOwnerWorkspaceId] = useState<string | null>(null)
-  const [myWorkspaceId, setMyWorkspaceId] = useState<string | null>(null)
   const [isGroupOwner, setIsGroupOwner] = useState(false)
   const [isLinkedStaff, setIsLinkedStaff] = useState(false)
   const [joinUrlStudent, setJoinUrlStudent] = useState('')
@@ -223,7 +221,7 @@ export function TeacherGroupDetail() {
   useEffect(() => {
     if (loading) return
     if (searchParams.get('compose') !== 'announce') return
-    if (isGroupOwner) {
+    if (isGroupOwner || isLinkedStaff) {
       setPostForm((f) => ({ ...f, scope: 'workspace' }))
     }
     const el = document.getElementById('teacher-group-wall')
@@ -240,7 +238,7 @@ export function TeacherGroupDetail() {
       },
       { replace: true },
     )
-  }, [loading, searchParams, isGroupOwner, setSearchParams])
+  }, [loading, searchParams, isGroupOwner, isLinkedStaff, setSearchParams])
 
   async function reload() {
     if (!id || !session?.user?.id) {
@@ -253,13 +251,11 @@ export function TeacherGroupDetail() {
     setEditSched(null)
     setScheduleConflictBlocker(null)
     setEditScheduleConflictBlocker(null)
-    const { workspace: myWs, error: wErr } = await fetchWorkspaceForTeacher(session.user.id)
-    if (wErr || !myWs) {
-      setErr(wErr?.message ?? 'مساحة غير موجودة')
-      setLoading(false)
-      return
-    }
-    setMyWorkspaceId(myWs.id)
+    const { data: ownedWs } = await supabase
+      .from('workspaces')
+      .select('id')
+      .eq('owner_teacher_id', session.user.id)
+      .maybeSingle()
 
     const { data: g, error: gErr } = await supabase.from('groups').select('*').eq('id', id).single()
     if (gErr || !g) {
@@ -276,7 +272,7 @@ export function TeacherGroupDetail() {
       .eq('status', 'active')
       .maybeSingle()
 
-    const owner = g.workspace_id === myWs.id
+    const owner = !!ownedWs && ownedWs.id === g.workspace_id
     const linked = !!linkRow
     if (!owner && !linked) {
       setErr('الفوج غير موجود أو ليس لديك صلاحية')
@@ -377,10 +373,11 @@ export function TeacherGroupDetail() {
   }, [id, session?.user?.id])
 
   useEffect(() => {
-    if (!isGroupOwner) {
+    if (loading) return
+    if (!isGroupOwner && !isLinkedStaff) {
       setPostForm((f) => (f.scope === 'workspace' ? { ...f, scope: 'group' } : f))
     }
-  }, [isGroupOwner])
+  }, [loading, isGroupOwner, isLinkedStaff])
 
   useEffect(() => {
     if (!group) return
@@ -451,17 +448,17 @@ export function TeacherGroupDetail() {
 
   async function submitPost(e: React.FormEvent) {
     e.preventDefault()
-    if (!groupOwnerWorkspaceId || !myWorkspaceId || !session?.user?.id || !id) return
+    if (!groupOwnerWorkspaceId || !session?.user?.id || !id) return
     setErr(null)
-    const wsForPost = postForm.scope === 'workspace' ? myWorkspaceId : groupOwnerWorkspaceId
     const row = {
-      workspace_id: wsForPost,
+      workspace_id: groupOwnerWorkspaceId,
       group_id: postForm.scope === 'group' ? id : null,
       author_id: session.user.id,
       scope: postForm.scope,
       title: postForm.title.trim() || null,
       content: postForm.content.trim(),
       post_type: 'general',
+      is_public_on_site: postForm.scope === 'workspace',
     }
     const { error } = await supabase.from('posts').insert(row)
     if (error) {
@@ -1928,9 +1925,7 @@ export function TeacherGroupDetail() {
                 }
               >
                 <option value="group">هذا الفوج فقط</option>
-                <option value="workspace" disabled={!isGroupOwner}>
-                  كل أفواجي{!isGroupOwner ? ' (منشئ الفوج فقط)' : ''}
-                </option>
+                <option value="workspace">كل أفواج المساحة</option>
               </select>
             </label>
             <label>
