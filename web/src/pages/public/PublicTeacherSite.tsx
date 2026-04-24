@@ -52,13 +52,8 @@ export function PublicTeacherSite() {
     setErr(null)
     const s = slug.trim()
     ;(async () => {
-      const [profRes, matRes, postRes, grpRes, schedRes] = await Promise.all([
-        supabase.rpc('public_teacher_by_workspace_slug', { p_slug: s }),
-        supabase.rpc('public_workspace_materials_by_slug', { p_slug: s }),
-        supabase.rpc('public_workspace_posts_by_slug', { p_slug: s }),
-        supabase.rpc('public_workspace_groups_teaser_by_slug', { p_slug: s }),
-        supabase.rpc('public_workspace_schedule_teaser_by_slug', { p_slug: s }),
-      ])
+      /** صف واحد أولاً يقلّل التزاحم مع طبقة الجلسة على الجوال، ثم الباقي بالتوازي. */
+      const profRes = await supabase.rpc('public_teacher_by_workspace_slug', { p_slug: s })
       if (!ok) return
       if (profRes.error) {
         setErr(profRes.error.message)
@@ -72,6 +67,14 @@ export function PublicTeacherSite() {
       }
       const list = profRes.data as PublicTeacherPageRow[] | null
       setRow(list && list.length > 0 ? list[0] : null)
+
+      const [matRes, postRes, grpRes, schedRes] = await Promise.all([
+        supabase.rpc('public_workspace_materials_by_slug', { p_slug: s }),
+        supabase.rpc('public_workspace_posts_by_slug', { p_slug: s }),
+        supabase.rpc('public_workspace_groups_teaser_by_slug', { p_slug: s }),
+        supabase.rpc('public_workspace_schedule_teaser_by_slug', { p_slug: s }),
+      ])
+      if (!ok) return
       setMaterials(matRes.error ? [] : ((matRes.data as PublicMaterialRow[]) ?? []))
       setPosts(postRes.error ? [] : ((postRes.data as PublicPostRow[]) ?? []))
       setGroups(grpRes.error ? [] : ((grpRes.data as PublicGroupTeaserRow[]) ?? []))

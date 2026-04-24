@@ -217,20 +217,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })()
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, s) => {
-      setSession(s)
-      if (s?.user?.id) {
-        setLoading(true)
-        try {
-          await loadProfile(s.user.id)
-        } finally {
+    } = supabase.auth.onAuthStateChange((_event, s) => {
+      void runSerializedAuth(async () => {
+        setSession(s)
+        if (s?.user?.id) {
+          setLoading(true)
+          try {
+            await loadProfile(s.user.id)
+          } finally {
+            setLoading(false)
+          }
+        } else {
+          ensuredForUser.current = null
+          setProfile(null)
           setLoading(false)
         }
-      } else {
-        ensuredForUser.current = null
-        setProfile(null)
-        setLoading(false)
-      }
+      })
     })
     return () => {
       cancelled = true
@@ -240,7 +242,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     ensuredForUser.current = null
-    await supabase.auth.signOut()
+    await runSerializedAuth(() => supabase.auth.signOut())
     setProfile(null)
   }, [])
 
