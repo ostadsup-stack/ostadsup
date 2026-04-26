@@ -26,6 +26,7 @@ export function HomeRedirect() {
       </div>
     )
   }
+  if (profile.role === 'admin') return <Navigate to="/admin/dashboard" replace />
   if (profile.role === 'teacher') return <Navigate to="/t" replace />
   return <Navigate to="/s" replace />
 }

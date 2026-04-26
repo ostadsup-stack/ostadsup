@@ -6,7 +6,8 @@ type ProfileLike = { role: string } | null | undefined
 
 function accountHomeHref(profile: ProfileLike): string {
   if (!profile) return '/'
-  if (profile.role === 'teacher' || profile.role === 'admin') return '/t'
+  if (profile.role === 'admin') return '/admin/dashboard'
+  if (profile.role === 'teacher') return '/t'
   return '/s'
 }
 
@@ -65,7 +66,9 @@ export function OfficialShell({
           )}
         </nav>
       </header>
-      <main className="official-public__main">{children}</main>
+      <main className="official-public__main">
+        <div className="official-public__page-shell">{children}</div>
+      </main>
     </div>
   )
 }

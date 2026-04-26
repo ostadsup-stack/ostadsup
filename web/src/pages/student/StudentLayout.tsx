@@ -12,6 +12,8 @@ import {
   IconLogOut,
 } from '../../components/NavIcons'
 import { ThemeToggle } from '../../components/ThemeToggle'
+import { useLiveSessionHeader } from '../../hooks/useLiveSessionHeader'
+import { LiveSessionHeaderIndicator } from '../../components/LiveSessionHeaderIndicator'
 import { fetchActiveStudentMemberships, filterStudentRoleRows, formatStudyLevel } from '../../lib/studentGroup'
 
 const STUDENT_MENU_ID = 'student-shell-profile-menu'
@@ -129,6 +131,8 @@ export function StudentLayout() {
       document.removeEventListener('keydown', onKey)
     }
   }, [menuOpen])
+
+  const liveHeader = useLiveSessionHeader(profile?.role, session?.user?.id)
 
   const name = profile?.full_name?.trim() || 'طالب'
   const initial = name.charAt(0) || '?'
@@ -305,6 +309,7 @@ export function StudentLayout() {
           </div>
 
           <div className="teacher-shell__actions">
+            <LiveSessionHeaderIndicator state={liveHeader} />
             <Link
               to="/s/notifications"
               className="btn btn--icon btn--ghost teacher-shell__notif-link"

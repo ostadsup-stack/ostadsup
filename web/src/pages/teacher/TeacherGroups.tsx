@@ -5,8 +5,14 @@ import { supabase } from '../../lib/supabase'
 import { fetchWorkspaceForTeacher } from '../../lib/workspace'
 import { randomJoinCode } from '../../lib/codes'
 import { buildSuggestedCohortCode } from '../../lib/cohortCode'
-import { localTodayBoundsIso, normalizeTeacherGroupSummaryRows, studyLevelLabelAr } from '../../lib/teacherGroups'
-import type { StudyLevel, TeacherGroupSummaryRow } from '../../types'
+import {
+  localTodayBoundsIso,
+  normalizeTeacherGroupSummaryRows,
+  scheduleModeLabelAr,
+  studyLevelLabelAr,
+  studyTrackLabelAr,
+} from '../../lib/teacherGroups'
+import type { GroupScheduleMode, GroupStudyTrack, StudyLevel, TeacherGroupSummaryRow } from '../../types'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { EmptyState } from '../../components/EmptyState'
@@ -16,6 +22,8 @@ import { rgbaFromHex } from '../../lib/colorContrast'
 
 const emptyCreateForm = {
   group_name: '',
+  schedule_mode: 'normal' as GroupScheduleMode,
+  study_track: 'normal' as GroupStudyTrack,
   academic_year: '',
   university: '',
   faculty: '',
@@ -136,6 +144,8 @@ export function TeacherGroups() {
     const basePayload = {
       workspace_id: workspace.id,
       group_name: form.group_name.trim(),
+      schedule_mode: form.schedule_mode,
+      study_track: form.study_track,
       academic_year: year,
       university: form.university.trim() || null,
       faculty: form.faculty.trim() || null,
@@ -229,6 +239,8 @@ export function TeacherGroups() {
               <span className="teacher-groups__th">اسم الفوج</span>
               <span className="teacher-groups__th">المستوى</span>
               <span className="teacher-groups__th">السنة الجامعية</span>
+              <span className="teacher-groups__th">التوقيت</span>
+              <span className="teacher-groups__th">المسار</span>
               <span className="teacher-groups__th">المنسق</span>
               <span className="teacher-groups__th teacher-groups__th--meta" />
             </div>
@@ -254,6 +266,12 @@ export function TeacherGroups() {
                       <span className="teacher-groups__cell muted">{studyLevelLabelAr(r.study_level)}</span>
                       <span className="teacher-groups__cell muted" title="السنة الجامعية">
                         {r.academic_year?.trim() || '—'}
+                      </span>
+                      <span className="teacher-groups__cell muted" title="توقيت الحصص">
+                        {scheduleModeLabelAr(r.schedule_mode)}
+                      </span>
+                      <span className="teacher-groups__cell muted" title="مسار التكوين">
+                        {studyTrackLabelAr(r.study_track)}
                       </span>
                       <span className="teacher-groups__cell teacher-groups__cell--coord" title="منسق الفوج">
                         <span className="teacher-groups__coord-name">{r.coordinator_name?.trim() || '—'}</span>
@@ -288,7 +306,28 @@ export function TeacherGroups() {
                 value={form.group_name}
                 onChange={(e) => setForm({ ...form, group_name: e.target.value })}
                 required
+                placeholder="اكتب اسم الفوج"
               />
+            </label>
+            <label>
+              التوقيت
+              <select
+                value={form.schedule_mode}
+                onChange={(e) => setForm({ ...form, schedule_mode: e.target.value as GroupScheduleMode })}
+              >
+                <option value="normal">توقيت عادي</option>
+                <option value="simplified">توقيت ميسر</option>
+              </select>
+            </label>
+            <label>
+              المسار
+              <select
+                value={form.study_track}
+                onChange={(e) => setForm({ ...form, study_track: e.target.value as GroupStudyTrack })}
+              >
+                <option value="normal">مسار عادي</option>
+                <option value="excellence">مسار التميّز</option>
+              </select>
             </label>
             <label className="teacher-groups__color-field">
               لون الفوج

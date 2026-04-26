@@ -44,6 +44,11 @@ export function TeacherAccountPage() {
         <Link to="/t">الرئيسية</Link> / حسابي
       </p>
       <PageHeader title="حسابي" subtitle="بياناتك الشخصية، صفحتك العامة، ووسائل التواصل." />
+      <p style={{ margin: '0 0 1rem' }}>
+        <Link to="/t/inbox/admin" className="btn btn--primary">
+          إرسال رسالة لمدير التطبيق
+        </Link>
+      </p>
       {wsLoading ? null : wsSlug && publicUrl ? (
         <div className="teacher-account__public-banner">
           <p className="teacher-account__public-banner-title">صفحتك العامة</p>

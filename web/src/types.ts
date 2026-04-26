@@ -53,6 +53,12 @@ export type Workspace = {
 
 export type StudyLevel = 'licence' | 'master' | 'doctorate'
 
+/** توقيت الحصص: عادي أو ميسر */
+export type GroupScheduleMode = 'normal' | 'simplified'
+
+/** المسار الدراسي: عادي أو تميّز */
+export type GroupStudyTrack = 'normal' | 'excellence'
+
 export type Group = {
   id: string
   workspace_id: string
@@ -72,6 +78,8 @@ export type Group = {
   cohort_suffix?: string | null
   status: string
   show_on_public_site?: boolean
+  schedule_mode?: GroupScheduleMode
+  study_track?: GroupStudyTrack
 }
 
 /** صف من RPC teacher_group_list_summaries */
@@ -94,6 +102,8 @@ export type TeacherGroupSummaryRow = {
   accent_color: string | null
   /** أول منسق نشط في الفوج (هجرة coordinator_name) */
   coordinator_name?: string | null
+  schedule_mode: GroupScheduleMode
+  study_track: GroupStudyTrack
 }
 
 export type GroupMember = {
@@ -125,6 +135,8 @@ export type Post = {
   updated_at?: string
   /** منشور مستوى المساحة يظهر في الصفحة العامة عند true */
   is_public_on_site?: boolean
+  /** عند false لا يُعرض المنشور لأعضاء المساحة/الفوج (يبقى للمؤلف والمدير) */
+  is_published?: boolean
 }
 
 export type Material = {
@@ -176,6 +188,8 @@ export type PublicGroupTeaserRow = {
   study_level: string
   university: string | null
   faculty: string | null
+  schedule_mode?: GroupScheduleMode
+  study_track?: GroupStudyTrack
 }
 
 export type PublicScheduleTeaserRow = {

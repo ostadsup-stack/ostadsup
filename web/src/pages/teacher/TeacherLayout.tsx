@@ -4,7 +4,10 @@ import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { IconBell, IconCalendar, IconInbox, IconLayout, IconLogOut } from '../../components/NavIcons'
 import { fetchWorkspaceForTeacher } from '../../lib/workspace'
+import { fetchUnreadFromAppAdminForTeacher } from '../../lib/teacherAppAdminChatInbox'
 import { ThemeToggle } from '../../components/ThemeToggle'
+import { useLiveSessionHeader } from '../../hooks/useLiveSessionHeader'
+import { LiveSessionHeaderIndicator } from '../../components/LiveSessionHeaderIndicator'
 
 const TEACHER_MENU_ID = 'teacher-shell-nav-menu'
 
@@ -26,11 +29,14 @@ const TEACHER_MENU_LINKS = [
 export function TeacherLayout() {
   const { profile, signOut, session } = useAuth()
   const [unreadNotif, setUnreadNotif] = useState<number | null>(null)
+  const [unreadFromAppAdmin, setUnreadFromAppAdmin] = useState(0)
   const [workspacePublicSlug, setWorkspacePublicSlug] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuWrapRef = useRef<HTMLDivElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const firstMenuItemRef = useRef<HTMLAnchorElement>(null)
+
+  const isPlainTeacher = profile?.role === 'teacher'
 
   useEffect(() => {
     let ok = true
@@ -53,6 +59,30 @@ export function TeacherLayout() {
       ok = false
     }
   }, [session?.user?.id])
+
+  useEffect(() => {
+    if (!session?.user?.id || !isPlainTeacher) {
+      setUnreadFromAppAdmin(0)
+      return
+    }
+    let ok = true
+    const tick = () => {
+      void (async () => {
+        const { count, error } = await fetchUnreadFromAppAdminForTeacher()
+        if (!ok) return
+        if (error) setUnreadFromAppAdmin(0)
+        else setUnreadFromAppAdmin(count)
+      })()
+    }
+    tick()
+    const t = window.setInterval(tick, 30_000)
+    return () => {
+      ok = false
+      window.clearInterval(t)
+    }
+  }, [session?.user?.id, isPlainTeacher])
+
+  const notifBadgeTotal = (unreadNotif ?? 0) + unreadFromAppAdmin
 
   useEffect(() => {
     let ok = true
@@ -100,6 +130,8 @@ export function TeacherLayout() {
       document.removeEventListener('keydown', onKey)
     }
   }, [menuOpen])
+
+  const liveHeader = useLiveSessionHeader(profile?.role === 'admin' ? 'teacher' : profile?.role, session?.user?.id)
 
   const name = profile?.full_name?.trim() || 'أستاذ'
   const initial = name.charAt(0) || '?'
@@ -157,17 +189,29 @@ export function TeacherLayout() {
                   aria-label="روابط سريعة"
                 >
                   {workspacePublicSlug ? (
-                    <a
-                      ref={firstMenuItemRef}
-                      role="menuitem"
-                      href={`/p/${encodeURIComponent(workspacePublicSlug)}`}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="teacher-shell__menu-link"
-                      onClick={() => setMenuOpen(false)}
-                    >
-                      الصفحة الرسمية
-                    </a>
+                    <>
+                      <a
+                        ref={firstMenuItemRef}
+                        role="menuitem"
+                        href={`/p/${encodeURIComponent(workspacePublicSlug)}`}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="teacher-shell__menu-link"
+                        onClick={() => setMenuOpen(false)}
+                      >
+                        الصفحة الرسمية
+                      </a>
+                      <a
+                        role="menuitem"
+                        href={`/p/${encodeURIComponent(workspacePublicSlug)}/live`}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="teacher-shell__menu-link"
+                        onClick={() => setMenuOpen(false)}
+                      >
+                        حصة عن بعد (رابط ثابت)
+                      </a>
+                    </>
                   ) : (
                     <Link
                       ref={firstMenuItemRef}
@@ -197,14 +241,17 @@ export function TeacherLayout() {
           </div>
 
           <div className="teacher-shell__actions">
+            <LiveSessionHeaderIndicator state={liveHeader} />
             <Link
               to="/t/notifications"
               className="btn btn--icon btn--ghost teacher-shell__notif-link"
               aria-label="الإشعارات"
             >
               <IconBell />
-              {unreadNotif !== null && unreadNotif > 0 ? (
-                <span className="teacher-shell__notif-badge">{unreadNotif > 99 ? '99+' : unreadNotif}</span>
+              {notifBadgeTotal > 0 ? (
+                <span className="teacher-shell__notif-badge">
+                  {notifBadgeTotal > 99 ? '99+' : notifBadgeTotal}
+                </span>
               ) : null}
             </Link>
             <ThemeToggle />

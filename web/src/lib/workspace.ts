@@ -27,21 +27,35 @@ export async function fetchWorkspaceForTeacher(teacherId: string) {
     .maybeSingle()
   if (gsErr) return { workspace: null, error: gsErr }
   const gid = gs?.group_id as string | undefined
-  if (!gid) return { workspace: null, error: null }
 
-  const { data: g, error: gErr } = await supabase
-    .from('groups')
-    .select('workspace_id')
-    .eq('id', gid)
-    .maybeSingle()
-  if (gErr || !g?.workspace_id) return { workspace: null, error: gErr ?? null }
+  if (gid) {
+    const { data: g, error: gErr } = await supabase
+      .from('groups')
+      .select('workspace_id')
+      .eq('id', gid)
+      .maybeSingle()
+    if (gErr || !g?.workspace_id) return { workspace: null, error: gErr ?? null }
 
-  const { data: ws, error: wsErr } = await supabase
+    const { data: ws, error: wsErr } = await supabase
+      .from('workspaces')
+      .select('*')
+      .eq('id', g.workspace_id as string)
+      .maybeSingle()
+    if (wsErr) return { workspace: null, error: wsErr }
+    if (ws) return { workspace: ws, error: null }
+  }
+
+  const { data: ensuredId, error: rpcErr } = await supabase.rpc('ensure_personal_teacher_workspace')
+  if (rpcErr) return { workspace: null, error: rpcErr }
+  const eid = typeof ensuredId === 'string' ? ensuredId : null
+  if (!eid) return { workspace: null, error: null }
+
+  const { data: createdWs, error: loadErr } = await supabase
     .from('workspaces')
     .select('*')
-    .eq('id', g.workspace_id as string)
+    .eq('id', eid)
     .maybeSingle()
-  return { workspace: ws, error: wsErr }
+  return { workspace: createdWs, error: loadErr }
 }
 
 export function shareWhatsAppMessage(text: string) {

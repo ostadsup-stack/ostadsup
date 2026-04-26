@@ -17,7 +17,16 @@ import {
   scheduleExclusionUserMessage,
   scheduleStartInPastUserMessage,
 } from '../../lib/scheduleConflict'
-import type { Group, GroupMember, Material, Post, ScheduleEvent, StudyLevel } from '../../types'
+import type {
+  Group,
+  GroupMember,
+  GroupScheduleMode,
+  GroupStudyTrack,
+  Material,
+  Post,
+  ScheduleEvent,
+  StudyLevel,
+} from '../../types'
 import { buildSuggestedCohortCode } from '../../lib/cohortCode'
 import { studyLevelLabelAr } from '../../lib/teacherGroups'
 import { addDays, sameLocalDay, startOfMonday } from '../../lib/teacherWeekSchedule'
@@ -72,6 +81,8 @@ export function TeacherGroupDetail() {
   const [metaSuggesting, setMetaSuggesting] = useState(false)
   const [metaForm, setMetaForm] = useState({
     study_level: 'licence' as StudyLevel,
+    schedule_mode: 'normal' as GroupScheduleMode,
+    study_track: 'normal' as GroupStudyTrack,
     academic_year: '',
     cohort_official_code: '',
     cohort_suffix: '',
@@ -383,6 +394,8 @@ export function TeacherGroupDetail() {
     if (!group) return
     setMetaForm({
       study_level: group.study_level ?? 'licence',
+      schedule_mode: group.schedule_mode === 'simplified' ? 'simplified' : 'normal',
+      study_track: group.study_track === 'excellence' ? 'excellence' : 'normal',
       academic_year: group.academic_year ?? '',
       cohort_official_code: group.cohort_official_code ?? '',
       cohort_suffix: group.cohort_suffix ?? '',
@@ -434,6 +447,8 @@ export function TeacherGroupDetail() {
       .from('groups')
       .update({
         study_level: metaForm.study_level,
+        schedule_mode: metaForm.schedule_mode,
+        study_track: metaForm.study_track,
         academic_year: metaForm.academic_year.trim() || null,
         cohort_official_code: metaForm.cohort_official_code.trim() || null,
         cohort_suffix: metaForm.cohort_suffix.trim() || null,
@@ -1860,6 +1875,28 @@ export function TeacherGroupDetail() {
                   <option value="licence">إجازة</option>
                   <option value="master">ماستر</option>
                   <option value="doctorate">دكتوراه</option>
+                </select>
+              </label>
+              <label>
+                التوقيت
+                <select
+                  value={metaForm.schedule_mode}
+                  onChange={(e) =>
+                    setMetaForm({ ...metaForm, schedule_mode: e.target.value as GroupScheduleMode })
+                  }
+                >
+                  <option value="normal">توقيت عادي</option>
+                  <option value="simplified">توقيت ميسر</option>
+                </select>
+              </label>
+              <label>
+                المسار
+                <select
+                  value={metaForm.study_track}
+                  onChange={(e) => setMetaForm({ ...metaForm, study_track: e.target.value as GroupStudyTrack })}
+                >
+                  <option value="normal">مسار عادي</option>
+                  <option value="excellence">مسار التميّز</option>
                 </select>
               </label>
               <label>

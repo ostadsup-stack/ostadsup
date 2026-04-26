@@ -58,6 +58,11 @@ export function TeacherPublicSitePage() {
     return `${window.location.origin}/p/${encodeURIComponent(owned.slug)}`
   }, [owned?.slug])
 
+  const publicLiveUrl = useMemo(() => {
+    if (!owned?.slug || typeof window === 'undefined') return null
+    return `${window.location.origin}/p/${encodeURIComponent(owned.slug)}/live`
+  }, [owned?.slug])
+
   const reload = useCallback(async () => {
     const uid = session?.user?.id
     if (!uid) {
@@ -328,6 +333,21 @@ export function TeacherPublicSitePage() {
               {publicPreviewUrl}
             </a>
           </p>
+          {publicLiveUrl ? (
+            <>
+              <p className="teacher-account__public-banner-title teacher-public-site__live-title">
+                رابط حصة عن بعد (ثابت)
+              </p>
+              <p className="muted small wrap" dir="ltr">
+                <a href={publicLiveUrl} target="_blank" rel="noreferrer noopener">
+                  {publicLiveUrl}
+                </a>
+              </p>
+              <p className="muted small">
+                انسخه للطلاب؛ تُحسب حالة «بدأت / بقي أقل من ساعة / انتهت» من حصصك الأونلاين في الجدول.
+              </p>
+            </>
+          ) : null}
         </div>
       ) : null}
 

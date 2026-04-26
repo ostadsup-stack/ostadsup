@@ -1,0 +1,4 @@
+@import 'tailwindcss';
+
+/* يتوافق مع ThemeToggle: `data-theme="dark"` على `<html>` */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));

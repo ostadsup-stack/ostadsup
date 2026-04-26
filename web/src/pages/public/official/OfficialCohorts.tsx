@@ -1,3 +1,4 @@
+import { scheduleModeLabelAr, studyTrackLabelAr } from '../../../lib/teacherGroups'
 import type { PublicGroupTeaserRow } from '../../../types'
 
 const LEVEL_AR: Record<string, string> = {
@@ -24,6 +25,9 @@ export function OfficialCohorts({ groups }: Props) {
             <p className="muted small">
               {LEVEL_AR[g.study_level] ?? g.study_level}
               {g.academic_year?.trim() ? ` — ${g.academic_year.trim()}` : ''}
+              {g.schedule_mode != null || g.study_track != null
+                ? ` — ${scheduleModeLabelAr(g.schedule_mode)} / ${studyTrackLabelAr(g.study_track)}`
+                : null}
             </p>
             {(g.university?.trim() || g.faculty?.trim()) && (
               <p className="muted small">

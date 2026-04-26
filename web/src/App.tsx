@@ -1,7 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { Loading } from './components/Loading'
-import { ErrorBanner } from './components/ErrorBanner'
+import { ProfileMissingView } from './components/auth/ProfileMissingView'
+import { RequireAdminRoute } from './features/admin-access'
 import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { HomeRedirect } from './pages/HomeRedirect'
@@ -11,6 +12,7 @@ import { TeacherGroups } from './pages/teacher/TeacherGroups'
 import { TeacherGroupDetail } from './pages/teacher/TeacherGroupDetail'
 import { TeacherGroupStaffPage } from './pages/teacher/TeacherGroupStaffPage'
 import { TeacherInbox } from './pages/teacher/TeacherInbox'
+import { TeacherAdminChatPage } from './pages/teacher/TeacherAdminChatPage'
 import { TeacherConversation } from './pages/teacher/TeacherConversation'
 import { TeacherNotifications } from './pages/teacher/TeacherNotifications'
 import { TeacherSchedulePage } from './pages/teacher/TeacherSchedulePage'
@@ -33,30 +35,21 @@ import { StudentMaterialsPage } from './pages/student/StudentMaterialsPage'
 import { StudentSchedulePage } from './pages/student/StudentSchedulePage'
 import { StudentAccountPage } from './pages/student/StudentAccountPage'
 import { PublicTeacherSite } from './pages/public/PublicTeacherSite'
+import { PublicTeacherLivePage } from './pages/public/PublicTeacherLivePage'
 import { PublicTeacherPostPage } from './pages/public/PublicTeacherPostPage'
 import { TeacherPublicSitePage } from './pages/teacher/TeacherPublicSitePage'
-
-/** عند وجود جلسة دون profile: إظهار الخطأ أو الاستمرار بالتحميل (مثل HomeRedirect) */
-function ProfileMissingView() {
-  const { error, signOut } = useAuth()
-  return (
-    <div className="main main--narrow" style={{ margin: '2rem auto' }}>
-      {error ? (
-        <>
-          <ErrorBanner message={error} />
-          <p className="muted">
-            إن استمرت المشكلة بعد تنفيذ SQL للدالة ensure_my_profile، جرّب تسجيل الخروج والدخول مجدداً.
-          </p>
-          <button type="button" className="btn btn--primary" onClick={() => void signOut()}>
-            تسجيل الخروج
-          </button>
-        </>
-      ) : (
-        <Loading label="جاري تحميل الملف الشخصي…" />
-      )}
-    </div>
-  )
-}
+import { AdminLayout } from './pages/admin/AdminLayout'
+import { AdminDashboard } from './pages/admin/AdminDashboard'
+import { AdminGroupsPage } from './pages/admin/AdminGroupsPage'
+import { AdminInvitationsPage } from './pages/admin/AdminInvitationsPage'
+import { AdminPostsPage } from './pages/admin/AdminPostsPage'
+import { AdminMessagesPage } from './pages/admin/AdminMessagesPage'
+import { AdminContentPage } from './pages/admin/AdminContentPage'
+import { AdminTeachersPage } from './pages/admin/AdminTeachersPage'
+import { AdminStudentsPage } from './pages/admin/AdminStudentsPage'
+import { AdminSettingsPage } from './pages/admin/AdminSettingsPage'
+import { AdminCollegeDetailPage } from './pages/admin/AdminCollegeDetailPage'
+import { AdminUniversityDetailPage } from './pages/admin/AdminUniversityDetailPage'
 
 function RequireTeacher({ children }: { children: React.ReactNode }) {
   const { profile, loading, session } = useAuth()
@@ -74,7 +67,10 @@ function RequireStudent({ children }: { children: React.ReactNode }) {
   if (loading) return <Loading />
   if (!session) return <Navigate to="/login" replace />
   if (!profile) return <ProfileMissingView />
-  if (profile.role === 'teacher' || profile.role === 'admin') {
+  if (profile.role === 'admin') {
+    return <Navigate to="/admin/dashboard" replace />
+  }
+  if (profile.role === 'teacher') {
     return <Navigate to="/t" replace />
   }
   return <>{children}</>
@@ -99,6 +95,34 @@ function AppRoutes() {
       <Route path="/login" element={<PublicLayout><LoginPage /></PublicLayout>} />
       <Route path="/register" element={<PublicLayout><RegisterPage /></PublicLayout>} />
       <Route path="/" element={<HomeRedirect />} />
+      <Route path="/a" element={<Navigate to="/admin/dashboard" replace />} />
+      <Route path="/a/cohorts" element={<Navigate to="/admin/groups" replace />} />
+      <Route path="/a/invitations" element={<Navigate to="/admin/invitations" replace />} />
+      <Route path="/a/posts" element={<Navigate to="/admin/posts" replace />} />
+      <Route path="/a/messages" element={<Navigate to="/admin/messages" replace />} />
+      <Route
+        path="/admin"
+        element={
+          <RequireAdminRoute>
+            <AdminLayout />
+          </RequireAdminRoute>
+        }
+      >
+        <Route index element={<Navigate to="dashboard" replace />} />
+        <Route path="dashboard" element={<AdminDashboard />} />
+        <Route path="universities/:id" element={<AdminUniversityDetailPage />} />
+        <Route path="colleges/:id" element={<AdminCollegeDetailPage />} />
+        <Route path="teachers" element={<AdminTeachersPage />} />
+        <Route path="groups" element={<AdminGroupsPage />} />
+        <Route path="students" element={<AdminStudentsPage />} />
+        <Route path="content" element={<AdminContentPage />} />
+        <Route path="invitations" element={<AdminInvitationsPage />} />
+        <Route path="posts" element={<AdminPostsPage />} />
+        <Route path="messages" element={<AdminMessagesPage />} />
+        <Route path="notifications" element={<TeacherNotifications />} />
+        <Route path="settings" element={<AdminSettingsPage />} />
+      </Route>
+      <Route path="/p/:slug/live" element={<PublicTeacherLivePage />} />
       <Route path="/p/:slug" element={<PublicTeacherSite />} />
       <Route path="/p/:slug/posts/:postId" element={<PublicTeacherPostPage />} />
 
@@ -119,6 +143,7 @@ function AppRoutes() {
         <Route path="groups/:id/staff" element={<TeacherGroupStaffPage />} />
         <Route path="groups/:id" element={<TeacherGroupDetail />} />
         <Route path="inbox" element={<TeacherInbox />} />
+        <Route path="inbox/admin" element={<TeacherAdminChatPage />} />
         <Route path="inbox/:id" element={<TeacherConversation />} />
         <Route path="notifications" element={<TeacherNotifications />} />
         <Route path="schedule" element={<TeacherSchedulePage />} />

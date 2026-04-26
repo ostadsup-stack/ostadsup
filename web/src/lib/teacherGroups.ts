@@ -1,4 +1,4 @@
-import type { StudyLevel, TeacherGroupSummaryRow } from '../types'
+import type { GroupScheduleMode, GroupStudyTrack, StudyLevel, TeacherGroupSummaryRow } from '../types'
 
 /** تسمية المستوى الدراسي للعرض في قوائم الأفواج */
 export function studyLevelLabelAr(level: StudyLevel | string | null | undefined): string {
@@ -7,6 +7,18 @@ export function studyLevelLabelAr(level: StudyLevel | string | null | undefined)
   if (l === 'master') return 'ماستر'
   if (l === 'doctorate') return 'دكتوراه'
   return '—'
+}
+
+export function scheduleModeLabelAr(mode: GroupScheduleMode | string | null | undefined): string {
+  const m = String(mode ?? 'normal')
+  if (m === 'simplified') return 'ميسر'
+  return 'عادي'
+}
+
+export function studyTrackLabelAr(track: GroupStudyTrack | string | null | undefined): string {
+  const t = String(track ?? 'normal')
+  if (t === 'excellence') return 'تميّز'
+  return 'عادي'
 }
 
 /** ISO bounds for the teacher's local calendar day (for RPC `teacher_group_list_summaries`). */
@@ -31,12 +43,18 @@ export function normalizeTeacherGroupSummaryRows(raw: unknown): TeacherGroupSumm
       unread_coordinator_count?: number
       accent_color?: string | null
       coordinator_name?: string | null
+      schedule_mode?: string | null
+      study_track?: string | null
     }
+    const sm = r.schedule_mode === 'simplified' ? 'simplified' : 'normal'
+    const st = r.study_track === 'excellence' ? 'excellence' : 'normal'
     return {
       ...r,
       unread_coordinator_count: Number(r.unread_coordinator_count ?? 0),
       accent_color: r.accent_color ?? null,
       coordinator_name: r.coordinator_name?.trim() || null,
+      schedule_mode: sm,
+      study_track: st,
     }
   })
 }

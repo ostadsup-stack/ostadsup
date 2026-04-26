@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { loadTeacherAppAdminInboxLine, type TeacherAppAdminInboxLine } from '../../lib/teacherAppAdminChatInbox'
 import { fetchWorkspaceForTeacher } from '../../lib/workspace'
 import { cohortListLinkAccentStyle, normalizeGroupAccent } from '../../lib/groupTheme'
 import { studyLevelLabelAr } from '../../lib/teacherGroups'
@@ -88,11 +89,20 @@ function rowAccentStyle(accent: string | null | undefined) {
   return cohortListLinkAccentStyle(normalizeGroupAccent(accent))
 }
 
+function trimPreview(s: string, max = 100) {
+  const t = s.replace(/\s+/g, ' ').trim()
+  if (t.length <= max) return t
+  return `${t.slice(0, max)}…`
+}
+
 export function TeacherInbox() {
-  const { session } = useAuth()
+  const { session, profile } = useAuth()
   const [err, setErr] = useState<string | null>(null)
   const [rows, setRows] = useState<TeacherInboxRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [appAdminLine, setAppAdminLine] = useState<TeacherAppAdminInboxLine | null>(null)
+  const [appAdminLoading, setAppAdminLoading] = useState(false)
+  const isTeacherOnly = profile?.role === 'teacher'
 
   useEffect(() => {
     let ok = true
@@ -122,6 +132,32 @@ export function TeacherInbox() {
       ok = false
     }
   }, [session?.user?.id])
+
+  const reloadAppAdminLine = useCallback(async () => {
+    if (!isTeacherOnly) {
+      setAppAdminLine(null)
+      return
+    }
+    setAppAdminLoading(true)
+    const { line, error: appErr } = await loadTeacherAppAdminInboxLine()
+    setAppAdminLoading(false)
+    if (appErr) setAppAdminLine(null)
+    else setAppAdminLine(line)
+  }, [isTeacherOnly])
+
+  useEffect(() => {
+    if (!isTeacherOnly || !session?.user?.id) {
+      setAppAdminLine(null)
+      return
+    }
+    void reloadAppAdminLine()
+  }, [isTeacherOnly, session?.user?.id, reloadAppAdminLine, rows.length])
+
+  useEffect(() => {
+    if (!isTeacherOnly) return
+    const id = window.setInterval(() => void reloadAppAdminLine(), 30_000)
+    return () => window.clearInterval(id)
+  }, [isTeacherOnly, reloadAppAdminLine])
 
   const { staff, admin, coordinator, students, other } = useMemo(() => bucketRows(rows), [rows])
 
@@ -175,13 +211,58 @@ export function TeacherInbox() {
         ) : null}
       </InboxSection>
 
-      <InboxSection
-        id="teacher-inbox-admin"
-        title="مدير التطبيق"
-        emptyHint="لا رسائل من المدير."
-      >
-        {admin.length > 0 ? (
+      <section className="teacher-inbox__section" aria-labelledby="teacher-inbox-admin">
+        <div className="teacher-inbox__section-head">
+          <h2 id="teacher-inbox-admin" className="teacher-inbox__section-title">
+            مدير التطبيق
+          </h2>
+          <Link to="/t/inbox/admin" className="btn btn--small btn--primary">
+            إرسال رسالة
+          </Link>
+        </div>
+        {(isTeacherOnly && (appAdminLoading || appAdminLine)) || admin.length > 0 ? (
           <ul className="list-links teacher-inbox__list">
+            {appAdminLoading && !appAdminLine ? (
+              <li>
+                <span className="teacher-inbox__row teacher-inbox__row--app-admin muted">جاري تحميل…</span>
+              </li>
+            ) : appAdminLine ? (
+              <li key="app-admin-direct">
+                <Link
+                  to="/t/inbox/admin"
+                  className="teacher-inbox__row teacher-inbox__row--app-admin teacher-inbox__row--admin"
+                >
+                  <span className="teacher-inbox__row-main">
+                    <span className="teacher-inbox__row-title">مدير التطبيق (محادثة مباشرة)</span>
+                    <span className="muted small teacher-inbox__row-meta">مع فريق الإدارة</span>
+                  </span>
+                  {appAdminLine.lastBody && appAdminLine.lastAt ? (
+                    <span className="teacher-inbox__row-sub muted small">
+                      {appAdminLine.lastFromAppAdmin ? (
+                        <span className="me-1 font-medium text-slate-600 dark:text-slate-300">المدير:</span>
+                      ) : (
+                        <span className="me-1">آخرك:</span>
+                      )}
+                      {trimPreview(appAdminLine.lastBody)}{' '}
+                      <time
+                        className="tabular-nums"
+                        dateTime={appAdminLine.lastAt}
+                        title={appAdminLine.lastAt}
+                      >
+                        {new Date(appAdminLine.lastAt).toLocaleString('ar-MA', { dateStyle: 'short', timeStyle: 'short' })}
+                      </time>
+                    </span>
+                  ) : (
+                    <span className="teacher-inbox__row-sub muted small">لا توجد رسائل بعد — اضغط لفتح المحادثة</span>
+                  )}
+                  {appAdminLine.hasUnreadFromAdmin ? (
+                    <span className="teacher-inbox__unread-badge" title="جديد من المدير" aria-label="جديد">
+                      1
+                    </span>
+                  ) : null}
+                </Link>
+              </li>
+            ) : null}
             {admin.map((r) => (
               <li key={r.conversation_id}>
                 <Link
@@ -209,7 +290,20 @@ export function TeacherInbox() {
             ))}
           </ul>
         ) : null}
-      </InboxSection>
+        {isTeacherOnly
+          ? !appAdminLine &&
+            !appAdminLoading &&
+            admin.length === 0 && (
+            <p className="muted small teacher-inbox__section-empty">
+              يمكنك مراسلة المدير من الزر «إرسال رسالة» أعلاه. تظهر محادثتك وآخر الرد هنا.
+            </p>
+          )
+          : admin.length === 0 && (
+            <p className="muted small teacher-inbox__section-empty">
+              لا رسائل من المدير ضمن المحادثات. يمكنك مراسلة المدير من الزر أعلاه.
+            </p>
+          )}
+      </section>
 
       <InboxSection
         id="teacher-inbox-coord"
