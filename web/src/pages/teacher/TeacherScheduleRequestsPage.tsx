@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { formatAppDateTime } from '../../lib/appDateTime'
 import type { ScheduleSlotRequestRow } from '../../types'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
@@ -22,8 +23,8 @@ type RequestRow = ScheduleSlotRequestRow & {
 }
 
 function formatRange(starts: string, ends: string) {
-  const a = new Date(starts).toLocaleString('ar-MA')
-  const b = new Date(ends).toLocaleString('ar-MA')
+  const a = formatAppDateTime(starts)
+  const b = formatAppDateTime(ends)
   return `${a} → ${b}`
 }
 

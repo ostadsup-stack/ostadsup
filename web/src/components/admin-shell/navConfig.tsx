@@ -44,7 +44,8 @@ export const ADMIN_SHELL_NAV: AdminShellNavItem[] = [
     activeMatch: (path) =>
       path === '/admin/content' ||
       path.startsWith('/admin/posts') ||
-      path.startsWith('/admin/messages'),
+      path.startsWith('/admin/messages') ||
+      path.startsWith('/admin/campus-wall'),
   },
   { to: '/admin/settings', label: 'الإعدادات', Icon: IconSettings },
 ]

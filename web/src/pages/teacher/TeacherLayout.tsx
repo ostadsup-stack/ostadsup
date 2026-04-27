@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
-import { IconBell, IconCalendar, IconInbox, IconLayout, IconLogOut } from '../../components/NavIcons'
+import { IconBell, IconCalendar, IconInbox, IconLayout, IconLogOut, IconPosts } from '../../components/NavIcons'
 import { fetchWorkspaceForTeacher } from '../../lib/workspace'
 import { fetchUnreadFromAppAdminForTeacher } from '../../lib/teacherAppAdminChatInbox'
 import { ThemeToggle } from '../../components/ThemeToggle'
@@ -20,7 +20,7 @@ const TEACHER_MENU_LINKS = [
   { to: '/t/inbox', label: 'الرسائل' },
   { to: '/t/books', label: 'مكتبتي' },
   { to: '/t/books#library-add', label: 'إضافة محتوى' },
-  { to: '/t/posts', label: 'منشوراتي' },
+  { to: '/t/posts', label: 'المنشورات' },
   { to: '/t/seminars', label: 'ندواتي' },
   { to: '/t/achievements', label: 'إنجازاتي' },
   { to: '/t/settings', label: 'إعدادات' },
@@ -131,24 +131,10 @@ export function TeacherLayout() {
     }
   }, [menuOpen])
 
-  const { state: liveHeader, reload: reloadLiveSessionHeader } = useLiveSessionHeader(
-    profile?.role === 'admin' ? 'teacher' : profile?.role,
+  const { state: liveHeader, reload: reloadLiveHeader } = useLiveSessionHeader(
+    'teacher',
     session?.user?.id,
   )
-  const [stoppingBroadcast, setStoppingBroadcast] = useState(false)
-
-  async function stopBroadcastForStudents() {
-    const evId = liveHeader?.activeEventId
-    if (!evId) return
-    setStoppingBroadcast(true)
-    const { error } = await supabase.from('schedule_events').update({ online_join_enabled: false }).eq('id', evId)
-    setStoppingBroadcast(false)
-    if (error) {
-      console.warn('[Ostadi] stop broadcast', error.message)
-      return
-    }
-    await reloadLiveSessionHeader()
-  }
 
   const name = profile?.full_name?.trim() || 'أستاذ'
   const initial = name.charAt(0) || '?'
@@ -257,21 +243,8 @@ export function TeacherLayout() {
             </div>
           </div>
 
-          <div className="teacher-shell__actions teacher-shell__actions--live">
-            <div className="teacher-shell__live-block">
-              <LiveSessionHeaderIndicator state={liveHeader} />
-              {liveHeader?.activeEventId ? (
-                <button
-                  type="button"
-                  className="btn btn--small btn--ghost teacher-shell__stop-broadcast"
-                  disabled={stoppingBroadcast}
-                  title="يخفي زر الدخول عن الطلاب في المنصة (لا يغلق تبويب Meet أو Jitsi تلقائياً)"
-                  onClick={() => void stopBroadcastForStudents()}
-                >
-                  {stoppingBroadcast ? 'جاري…' : 'إيقاف البث للطلاب'}
-                </button>
-              ) : null}
-            </div>
+          <div className="teacher-shell__actions">
+            <LiveSessionHeaderIndicator state={liveHeader} onLiveSessionUpdated={reloadLiveHeader} />
             <Link
               to="/t/notifications"
               className="btn btn--icon btn--ghost teacher-shell__notif-link"
@@ -309,6 +282,10 @@ export function TeacherLayout() {
             ◈
           </span>
           <span>الأفواج</span>
+        </NavLink>
+        <NavLink to="/t/posts" className={bottomNavClass}>
+          <IconPosts className="teacher-bottom-nav__icon" />
+          <span>المنشورات</span>
         </NavLink>
         <NavLink to="/t/inbox" className={bottomNavClass}>
           <IconInbox className="teacher-bottom-nav__icon" />

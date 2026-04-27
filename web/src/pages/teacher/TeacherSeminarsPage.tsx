@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { formatAppDateTime } from '../../lib/appDateTime'
 import { fetchWorkspaceForTeacher } from '../../lib/workspace'
 import type { ScheduleEvent } from '../../types'
 import { Loading } from '../../components/Loading'
@@ -83,7 +84,7 @@ export function TeacherSeminarsPage() {
                 <Link to={`/t/groups/${ev.group_id}`}>فتح الفوج</Link>
               </p>
               <p>
-                {new Date(ev.starts_at).toLocaleString('ar-MA')} → {new Date(ev.ends_at).toLocaleString('ar-MA')}
+                {formatAppDateTime(ev.starts_at)} → {formatAppDateTime(ev.ends_at)}
                 {' — '}
                 {ev.mode === 'online' ? 'عن بُعد' : 'حضوري'}
               </p>

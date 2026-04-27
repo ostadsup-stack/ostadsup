@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { formatAppDateTime } from '../../lib/appDateTime'
 import { loadTeacherAppAdminInboxLine, type TeacherAppAdminInboxLine } from '../../lib/teacherAppAdminChatInbox'
 import { fetchWorkspaceForTeacher } from '../../lib/workspace'
 import { cohortListLinkAccentStyle, normalizeGroupAccent } from '../../lib/groupTheme'
@@ -249,7 +250,7 @@ export function TeacherInbox() {
                         dateTime={appAdminLine.lastAt}
                         title={appAdminLine.lastAt}
                       >
-                        {new Date(appAdminLine.lastAt).toLocaleString('ar-MA', { dateStyle: 'short', timeStyle: 'short' })}
+                        {formatAppDateTime(appAdminLine.lastAt, { dateStyle: 'short', timeStyle: 'short' })}
                       </time>
                     </span>
                   ) : (

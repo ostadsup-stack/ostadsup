@@ -5,7 +5,13 @@ import { supabase } from '../../lib/supabase'
 import { shareWhatsAppMessage } from '../../lib/workspace'
 import { cohortPageSurfaceStyle, DEFAULT_GROUP_ACCENT, normalizeGroupAccent } from '../../lib/groupTheme'
 import { whatsappHref } from '../../lib/whatsapp'
-import { nextEndAfterStartChange, scheduleFieldsFromIso } from '../../lib/scheduleFormTimes'
+import {
+  nextEndAfterStartChange,
+  scheduleFieldsFromIso,
+  formatHhmmDigitsInput,
+  commitHhmmText,
+  parseClock,
+} from '../../lib/scheduleFormTimes'
 import {
   findOverlappingScheduleEvents,
   isPostgresExclusionViolation,
@@ -30,9 +36,20 @@ import type {
 import { buildSuggestedCohortCode } from '../../lib/cohortCode'
 import { studyLevelLabelAr } from '../../lib/teacherGroups'
 import { addDays, sameLocalDay, startOfMonday } from '../../lib/teacherWeekSchedule'
+import { formatAppDateTime, formatAppTime } from '../../lib/appDateTime'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { EmptyState } from '../../components/EmptyState'
+
+function applyStartHhmm<T extends { start_time: string; end_time: string }>(raw: string, s: T): T {
+  const t = formatHhmmDigitsInput(raw)
+  const p = parseClock(t)
+  return {
+    ...s,
+    start_time: t,
+    end_time: p ? nextEndAfterStartChange(s.start_time, s.end_time, t) : s.end_time,
+  }
+}
 
 type MemberContactInfo = {
   phone: string | null
@@ -51,35 +68,7 @@ const emptySchedForm = {
   end_time: '',
   location: '',
   meeting_link: '',
-  meeting_provider: 'jitsi' as 'jitsi' | 'google_meet' | 'custom',
-  online_join_enabled: true,
   note: '',
-}
-
-type SchedFormLocal = typeof emptySchedForm
-
-function scheduleMeetingDbFields(form: SchedFormLocal) {
-  if (form.mode !== 'online') {
-    return { meeting_link: null as string | null, meeting_provider: 'jitsi' as const, online_join_enabled: true }
-  }
-  const prov: 'jitsi' | 'google_meet' | 'custom' =
-    form.meeting_provider === 'google_meet' || form.meeting_provider === 'custom'
-      ? form.meeting_provider
-      : 'jitsi'
-  const linkTrim = form.meeting_link.trim() || null
-  return {
-    meeting_provider: prov,
-    online_join_enabled: form.online_join_enabled !== false,
-    meeting_link: prov === 'jitsi' ? null : linkTrim,
-  }
-}
-
-function validateOnlineMeetingBeforeSave(form: SchedFormLocal): string | null {
-  if (form.mode !== 'online') return null
-  if (form.meeting_provider === 'google_meet' && !form.meeting_link.trim()) {
-    return 'اختر Google Meet ثم الصق رابط الاجتماع (من «مشاركة الاجتماع» في Meet).'
-  }
-  return null
 }
 
 export function TeacherGroupDetail() {
@@ -552,7 +541,7 @@ export function TeacherGroupDetail() {
       if (card?.kind === 'edit' && editId) {
         document.getElementById(`schedule-event-${editId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
         const t = document.querySelector(
-          `#schedule-event-${editId} .schedule-list__edit-form input[type="time"]`,
+          `#schedule-event-${editId} .schedule-list__edit-form #schedule-edit-start`,
         ) as HTMLInputElement | null
         t?.focus()
         return
@@ -579,12 +568,6 @@ export function TeacherGroupDetail() {
       }
       if (isScheduleStartInPast(starts)) {
         setErr(scheduleStartInPastUserMessage())
-        setCrossGroupOverlapCard(null)
-        return
-      }
-      const meetErrCg = validateOnlineMeetingBeforeSave(sched)
-      if (meetErrCg) {
-        setErr(meetErrCg)
         setCrossGroupOverlapCard(null)
         return
       }
@@ -622,8 +605,8 @@ export function TeacherGroupDetail() {
         starts_at: starts.toISOString(),
         ends_at: ends.toISOString(),
         location: sched.location.trim() || null,
+        meeting_link: sched.meeting_link.trim() || null,
         note: sched.note.trim() || null,
-        ...scheduleMeetingDbFields(sched),
         ...(needsAck ? { teacher_cross_group_overlap_ack: true } : {}),
       })
       setCrossGroupOverlapSaving(false)
@@ -664,12 +647,6 @@ export function TeacherGroupDetail() {
       setCrossGroupOverlapCard(null)
       return
     }
-    const meetErrCrossEdit = validateOnlineMeetingBeforeSave(editSched)
-    if (meetErrCrossEdit) {
-      setErr(meetErrCrossEdit)
-      setCrossGroupOverlapCard(null)
-      return
-    }
     const overlaps = findOverlappingScheduleEvents(events, starts, ends, editingEventId)
     const myId = session.user.id
     const selfBlocks = overlaps.filter((ev) => ev.created_by === myId)
@@ -703,8 +680,8 @@ export function TeacherGroupDetail() {
         starts_at: starts.toISOString(),
         ends_at: ends.toISOString(),
         location: editSched.location.trim() || null,
+        meeting_link: editSched.meeting_link.trim() || null,
         note: editSched.note.trim() || null,
-        ...scheduleMeetingDbFields(editSched),
         ...(needsAck ? { teacher_cross_group_overlap_ack: true } : {}),
       })
       .eq('id', editingEventId)
@@ -737,11 +714,6 @@ export function TeacherGroupDetail() {
     }
     if (isScheduleStartInPast(starts)) {
       setErr(scheduleStartInPastUserMessage())
-      return
-    }
-    const meetErr = validateOnlineMeetingBeforeSave(sched)
-    if (meetErr) {
-      setErr(meetErr)
       return
     }
     setScheduleConflictBlocker(null)
@@ -784,8 +756,8 @@ export function TeacherGroupDetail() {
       starts_at: starts.toISOString(),
       ends_at: ends.toISOString(),
       location: sched.location.trim() || null,
+      meeting_link: sched.meeting_link.trim() || null,
       note: sched.note.trim() || null,
-      ...scheduleMeetingDbFields(sched),
     })
     if (error) {
       if (isPostgresExclusionViolation(error)) setErr(scheduleExclusionUserMessage())
@@ -924,11 +896,6 @@ export function TeacherGroupDetail() {
       end_time,
       location: ev.location ?? '',
       meeting_link: ev.meeting_link ?? '',
-      meeting_provider:
-        ev.meeting_provider === 'google_meet' || ev.meeting_provider === 'custom'
-          ? ev.meeting_provider
-          : 'jitsi',
-      online_join_enabled: ev.online_join_enabled !== false,
       note: ev.note ?? '',
     })
   }
@@ -962,11 +929,6 @@ export function TeacherGroupDetail() {
       prevFieldsEdit.start_time === editSched.start_time
     if (isScheduleStartInPast(starts) && !startUnchangedEdit) {
       setErr(scheduleStartInPastUserMessage())
-      return
-    }
-    const meetErrEdit = validateOnlineMeetingBeforeSave(editSched)
-    if (meetErrEdit) {
-      setErr(meetErrEdit)
       return
     }
     setEditScheduleConflictBlocker(null)
@@ -1010,8 +972,8 @@ export function TeacherGroupDetail() {
         starts_at: starts.toISOString(),
         ends_at: ends.toISOString(),
         location: editSched.location.trim() || null,
+        meeting_link: editSched.meeting_link.trim() || null,
         note: editSched.note.trim() || null,
-        ...scheduleMeetingDbFields(editSched),
       })
       .eq('id', editingEventId)
     setScheduleEditSaving(false)
@@ -1110,7 +1072,7 @@ export function TeacherGroupDetail() {
   function scheduleEventSummaryLine(ev: ScheduleEvent) {
     const kind = ev.event_type === 'seminar' ? 'ندوة' : 'حصة'
     const title = ev.subject_name ?? kind
-    return `${new Date(ev.starts_at).toLocaleString('ar-MA')} → ${new Date(ev.ends_at).toLocaleString('ar-MA')} — ${title} — ${scheduleEventCreatorLabel(ev)} (${ev.mode === 'online' ? 'عن بُعد' : 'حضوري'})${ev.location ? ` — ${ev.location}` : ''}`
+    return `${formatAppDateTime(ev.starts_at)} → ${formatAppDateTime(ev.ends_at)} — ${title} — ${scheduleEventCreatorLabel(ev)} (${ev.mode === 'online' ? 'عن بُعد' : 'حضوري'})${ev.location ? ` — ${ev.location}` : ''}`
   }
 
   async function handleArchiveGroup() {
@@ -1180,7 +1142,7 @@ export function TeacherGroupDetail() {
       .slice(0, 12)
       .map((ev) => {
         const kind = ev.event_type === 'seminar' ? 'ندوة' : 'حصة'
-        return `${new Date(ev.starts_at).toLocaleString('ar-MA')} — ${ev.subject_name ?? kind} — ${scheduleEventCreatorLabel(ev)} (${kind}، ${ev.mode === 'online' ? 'عن بُعد' : 'حضوري'})`
+        return `${formatAppDateTime(ev.starts_at)} — ${ev.subject_name ?? kind} — ${scheduleEventCreatorLabel(ev)} (${kind}، ${ev.mode === 'online' ? 'عن بُعد' : 'حضوري'})`
       })
     const link = joinUrlStudent || `${typeof window !== 'undefined' ? window.location.origin : ''}/s/join?code=${group.join_code}`
     const text = `جدول ${group.group_name}:\n${lines.join('\n')}\n\nرابط المنصة: ${link}`
@@ -1467,7 +1429,7 @@ export function TeacherGroupDetail() {
               {crossGroupOverlapCard.otherSessions.map((ev) => (
                 <li key={ev.id}>
                   <span className="input--ltr">
-                    {new Date(ev.starts_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })}
+                    {formatAppTime(ev.starts_at, { hour: '2-digit', minute: '2-digit' })}
                   </span>
                   {' — '}
                   <strong>
@@ -1544,9 +1506,6 @@ export function TeacherGroupDetail() {
                 setSched({
                   ...sched,
                   mode: e.target.value === 'online' ? 'online' : 'on_site',
-                  meeting_provider: e.target.value === 'online' ? sched.meeting_provider : 'jitsi',
-                  meeting_link: e.target.value === 'online' ? sched.meeting_link : '',
-                  online_join_enabled: e.target.value === 'online' ? sched.online_join_enabled : true,
                 })
               }
             >
@@ -1568,27 +1527,41 @@ export function TeacherGroupDetail() {
             وقت البداية
             <input
               id="schedule-new-start"
-              type="time"
+              type="text"
               className="input--ltr"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="مثال: 21:30"
+              title="24 ساعة: 00:00 — 23:59"
               value={sched.start_time}
               disabled={!canManageSchedule}
-              onChange={(e) =>
-                setSched((s) => ({
-                  ...s,
-                  start_time: e.target.value,
-                  end_time: nextEndAfterStartChange(s.start_time, s.end_time, e.target.value),
-                }))
+              onChange={(e) => setSched((s) => applyStartHhmm(e.target.value, s))}
+              onBlur={() =>
+                setSched((s) => {
+                  const st = commitHhmmText(s.start_time)
+                  const p = parseClock(st)
+                  return {
+                    ...s,
+                    start_time: st,
+                    end_time: p ? nextEndAfterStartChange(s.start_time, s.end_time, st) : s.end_time,
+                  }
+                })
               }
             />
           </label>
           <label>
             وقت النهاية
             <input
-              type="time"
+              type="text"
               className="input--ltr"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="مثال: 23:30"
+              title="24 ساعة: 00:00 — 23:59"
               value={sched.end_time}
               disabled={!canManageSchedule}
-              onChange={(e) => setSched({ ...sched, end_time: e.target.value })}
+              onChange={(e) => setSched((s) => ({ ...s, end_time: formatHhmmDigitsInput(e.target.value) }))}
+              onBlur={() => setSched((s) => ({ ...s, end_time: commitHhmmText(s.end_time) }))}
             />
           </label>
           <label>
@@ -1599,60 +1572,14 @@ export function TeacherGroupDetail() {
               onChange={(e) => setSched({ ...sched, location: e.target.value })}
             />
           </label>
-          {sched.mode === 'online' ? (
-            <>
-              <label>
-                منصة البث
-                <select
-                  value={sched.meeting_provider}
-                  disabled={!canManageSchedule}
-                  onChange={(e) => {
-                    const v = e.target.value
-                    const nextProv =
-                      v === 'google_meet' || v === 'custom' ? (v as 'google_meet' | 'custom') : 'jitsi'
-                    setSched({
-                      ...sched,
-                      meeting_provider: nextProv,
-                      meeting_link: nextProv === 'jitsi' ? '' : sched.meeting_link,
-                    })
-                  }}
-                >
-                  <option value="jitsi">Jitsi (غرفة Ostadi)</option>
-                  <option value="google_meet">Google Meet</option>
-                  <option value="custom">رابط آخر (Zoom …)</option>
-                </select>
-              </label>
-              <label className="span-2 schedule-online-join-toggle">
-                <input
-                  type="checkbox"
-                  checked={sched.online_join_enabled}
-                  disabled={!canManageSchedule}
-                  onChange={(e) => setSched({ ...sched, online_join_enabled: e.target.checked })}
-                />
-                <span>الطلاب يرون زر الدخول للبث في المنصة</span>
-              </label>
-              {sched.meeting_provider === 'jitsi' ? (
-                <p className="muted small span-2">
-                  يفتح الطلاب غرفة Jitsi المرتبطة بمساحتك العامة. يمكنك أثناء الحصة إيقاف الظهور من زر «إيقاف البث
-                  للطلاب» في أعلى الصفحة.
-                </p>
-              ) : (
-                <label className="span-2">
-                  {sched.meeting_provider === 'google_meet' ? 'رابط Google Meet' : 'رابط الاجتماع'}
-                  <input
-                    value={sched.meeting_link}
-                    disabled={!canManageSchedule}
-                    dir="ltr"
-                    className="input--ltr"
-                    placeholder={
-                      sched.meeting_provider === 'google_meet' ? 'https://meet.google.com/...' : 'https://...'
-                    }
-                    onChange={(e) => setSched({ ...sched, meeting_link: e.target.value })}
-                  />
-                </label>
-              )}
-            </>
-          ) : null}
+          <label>
+            رابط الاجتماع
+            <input
+              value={sched.meeting_link}
+              disabled={!canManageSchedule}
+              onChange={(e) => setSched({ ...sched, meeting_link: e.target.value })}
+            />
+          </label>
           <label className="span-2">
             ملاحظة
             <input
@@ -1718,19 +1645,8 @@ export function TeacherGroupDetail() {
                   )}{' '}
                   <strong>{ev.subject_name ?? (ev.event_type === 'seminar' ? 'ندوة' : 'حصة')}</strong> —{' '}
                   {scheduleEventCreatorLabel(ev)} —{' '}
-                  {new Date(ev.starts_at).toLocaleString('ar-MA')} →{' '}
-                  {new Date(ev.ends_at).toLocaleString('ar-MA')} ({ev.mode === 'online' ? 'عن بُعد' : 'حضوري'})
-                  {ev.mode === 'online' ? (
-                    <span className="muted">
-                      {' — '}
-                      {ev.meeting_provider === 'google_meet'
-                        ? 'Meet'
-                        : ev.meeting_provider === 'custom'
-                          ? 'رابط خاص'
-                          : 'Jitsi'}
-                      {ev.online_join_enabled === false ? ' · الدخول مخفي' : ''}
-                    </span>
-                  ) : null}
+                  {formatAppDateTime(ev.starts_at)} →{' '}
+                  {formatAppDateTime(ev.ends_at)} ({ev.mode === 'online' ? 'عن بُعد' : 'حضوري'})
                   {ev.location ? <span className="muted"> — {ev.location}</span> : null}
                 </div>
                 {canManageSchedule && canMutateScheduleEvent(ev) ? (
@@ -1788,11 +1704,6 @@ export function TeacherGroupDetail() {
                           setEditSched({
                             ...editSched,
                             mode: e.target.value === 'online' ? 'online' : 'on_site',
-                            meeting_provider:
-                              e.target.value === 'online' ? editSched.meeting_provider : 'jitsi',
-                            meeting_link: e.target.value === 'online' ? editSched.meeting_link : '',
-                            online_join_enabled:
-                              e.target.value === 'online' ? editSched.online_join_enabled : true,
                           })
                         }
                       >
@@ -1813,31 +1724,49 @@ export function TeacherGroupDetail() {
                     <label>
                       وقت البداية
                       <input
-                        type="time"
+                        id="schedule-edit-start"
+                        type="text"
                         className="input--ltr"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        placeholder="مثال: 21:30"
+                        title="24 ساعة: 00:00 — 23:59"
                         value={editSched.start_time}
                         disabled={scheduleEditSaving}
                         onChange={(e) =>
-                          setEditSched((s) =>
-                            s
-                              ? {
-                                  ...s,
-                                  start_time: e.target.value,
-                                  end_time: nextEndAfterStartChange(s.start_time, s.end_time, e.target.value),
-                                }
-                              : s,
-                          )
+                          setEditSched((s) => (s ? applyStartHhmm(e.target.value, s) : s))
+                        }
+                        onBlur={() =>
+                          setEditSched((s) => {
+                            if (!s) return s
+                            const st = commitHhmmText(s.start_time)
+                            const p = parseClock(st)
+                            return {
+                              ...s,
+                              start_time: st,
+                              end_time: p ? nextEndAfterStartChange(s.start_time, s.end_time, st) : s.end_time,
+                            }
+                          })
                         }
                       />
                     </label>
                     <label>
                       وقت النهاية
                       <input
-                        type="time"
+                        type="text"
                         className="input--ltr"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        placeholder="مثال: 23:30"
+                        title="24 ساعة: 00:00 — 23:59"
                         value={editSched.end_time}
                         disabled={scheduleEditSaving}
-                        onChange={(e) => setEditSched({ ...editSched, end_time: e.target.value })}
+                        onChange={(e) =>
+                          setEditSched((s) => (s ? { ...s, end_time: formatHhmmDigitsInput(e.target.value) } : s))
+                        }
+                        onBlur={() =>
+                          setEditSched((s) => (s ? { ...s, end_time: commitHhmmText(s.end_time) } : s))
+                        }
                       />
                     </label>
                     <label>
@@ -1848,66 +1777,14 @@ export function TeacherGroupDetail() {
                         onChange={(e) => setEditSched({ ...editSched, location: e.target.value })}
                       />
                     </label>
-                    {editSched.mode === 'online' ? (
-                      <>
-                        <label>
-                          منصة البث
-                          <select
-                            value={editSched.meeting_provider}
-                            disabled={scheduleEditSaving}
-                            onChange={(e) => {
-                              const v = e.target.value
-                              const nextProv =
-                                v === 'google_meet' || v === 'custom' ? (v as 'google_meet' | 'custom') : 'jitsi'
-                              setEditSched({
-                                ...editSched,
-                                meeting_provider: nextProv,
-                                meeting_link: nextProv === 'jitsi' ? '' : editSched.meeting_link,
-                              })
-                            }}
-                          >
-                            <option value="jitsi">Jitsi (غرفة Ostadi)</option>
-                            <option value="google_meet">Google Meet</option>
-                            <option value="custom">رابط آخر (Zoom …)</option>
-                          </select>
-                        </label>
-                        <label className="span-2 schedule-online-join-toggle">
-                          <input
-                            type="checkbox"
-                            checked={editSched.online_join_enabled}
-                            disabled={scheduleEditSaving}
-                            onChange={(e) =>
-                              setEditSched({ ...editSched, online_join_enabled: e.target.checked })
-                            }
-                          />
-                          <span>الطلاب يرون زر الدخول للبث في المنصة</span>
-                        </label>
-                        {editSched.meeting_provider === 'jitsi' ? (
-                          <p className="muted small span-2">
-                            غرفة Jitsi من مساحتك العامة. أثناء الحصة يمكنك إيقاف الظهور من «إيقاف البث للطلاب» في
-                            الأعلى.
-                          </p>
-                        ) : (
-                          <label className="span-2">
-                            {editSched.meeting_provider === 'google_meet'
-                              ? 'رابط Google Meet'
-                              : 'رابط الاجتماع'}
-                            <input
-                              value={editSched.meeting_link}
-                              disabled={scheduleEditSaving}
-                              dir="ltr"
-                              className="input--ltr"
-                              placeholder={
-                                editSched.meeting_provider === 'google_meet'
-                                  ? 'https://meet.google.com/...'
-                                  : 'https://...'
-                              }
-                              onChange={(e) => setEditSched({ ...editSched, meeting_link: e.target.value })}
-                            />
-                          </label>
-                        )}
-                      </>
-                    ) : null}
+                    <label>
+                      رابط الاجتماع
+                      <input
+                        value={editSched.meeting_link}
+                        disabled={scheduleEditSaving}
+                        onChange={(e) => setEditSched({ ...editSched, meeting_link: e.target.value })}
+                      />
+                    </label>
                     <label className="span-2">
                       ملاحظة
                       <input
@@ -2168,7 +2045,7 @@ export function TeacherGroupDetail() {
                   <span className="pill">{p.scope === 'workspace' ? 'عام' : 'الفوج'}</span>
                   {p.title ? <h4>{p.title}</h4> : null}
                   <p>{p.content}</p>
-                  <time className="muted">{new Date(p.created_at).toLocaleString('ar-MA')}</time>
+                  <time className="muted">{formatAppDateTime(p.created_at)}</time>
                 </li>
               ))}
             </ul>

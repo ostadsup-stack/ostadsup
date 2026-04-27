@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { formatAppDateTime } from '../../lib/appDateTime'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { EmptyState } from '../../components/EmptyState'
@@ -174,7 +175,7 @@ export function AdminInvitationsPage() {
                       </span>
                     </td>
                     <td className="muted" data-label="التاريخ" title={r.created_at}>
-                      {new Date(r.created_at).toLocaleString('ar-MA', {
+                      {formatAppDateTime(r.created_at, {
                         dateStyle: 'medium',
                         timeStyle: 'short',
                       })}

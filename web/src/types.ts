@@ -235,10 +235,8 @@ export type ScheduleEvent = {
   ends_at: string
   location: string | null
   meeting_link: string | null
-  /** jitsi = غرفة Ostadi؛ google_meet = رابط Meet؛ custom = أي رابط */
-  meeting_provider?: 'jitsi' | 'google_meet' | 'custom' | string | null
-  /** عند false يختفي رابط الدخول للطلاب من المنصة */
-  online_join_enabled?: boolean | null
+  /** يُضبط من رأس المنصة عند إعلان بدء البث (للمؤشر الأخضر للطلاب) */
+  live_started_at?: string | null
   note: string | null
   status?: string
   /** موافقة صريحة عند تداخل حصص لنفس الأستاذ بين فوجين (عمود قاعدة البيانات) */
@@ -247,8 +245,6 @@ export type ScheduleEvent = {
   show_on_public_site?: boolean
   /** يُملأ عند select مع join على profiles */
   profiles?: { full_name: string | null } | null
-  /** يُملأ عند select مع workspaces(slug) */
-  workspaces?: { slug: string } | { slug: string }[] | null
 }
 
 export type ScheduleSlotRequestRow = {

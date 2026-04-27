@@ -1,4 +1,5 @@
 import type { PublicScheduleTeaserRow } from '../../../types'
+import { formatAppDateTime } from '../../../lib/appDateTime'
 
 type Props = { rows: PublicScheduleTeaserRow[] }
 
@@ -14,7 +15,7 @@ export function OfficialSchedule({ rows }: Props) {
         {rows.map((r) => (
           <li key={r.id} className="official-sched-item">
             <div className="official-sched-item__when">
-              {new Date(r.starts_at).toLocaleString('ar-MA', {
+              {formatAppDateTime(r.starts_at, {
                 weekday: 'short',
                 month: 'short',
                 day: 'numeric',

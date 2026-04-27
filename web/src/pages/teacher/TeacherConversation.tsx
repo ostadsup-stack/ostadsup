@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { formatAppDateTime } from '../../lib/appDateTime'
 import { cohortPageSurfaceStyle, normalizeGroupAccent } from '../../lib/groupTheme'
 import type { Conversation, Message, Profile } from '../../types'
 import { Loading } from '../../components/Loading'
@@ -139,7 +140,7 @@ export function TeacherConversation() {
                   </span>
                 </div>
                 <p>{m.body}</p>
-                <time className="muted">{new Date(m.created_at).toLocaleString('ar-MA')}</time>
+                <time className="muted">{formatAppDateTime(m.created_at)}</time>
               </div>
             ))}
           </div>

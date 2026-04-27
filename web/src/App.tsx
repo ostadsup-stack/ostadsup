@@ -50,6 +50,8 @@ import { AdminStudentsPage } from './pages/admin/AdminStudentsPage'
 import { AdminSettingsPage } from './pages/admin/AdminSettingsPage'
 import { AdminCollegeDetailPage } from './pages/admin/AdminCollegeDetailPage'
 import { AdminUniversityDetailPage } from './pages/admin/AdminUniversityDetailPage'
+import { AdminCampusWallPage } from './pages/admin/AdminCampusWallPage'
+import { CampusWallMemberPage } from './pages/CampusWallMemberPage'
 
 function RequireTeacher({ children }: { children: React.ReactNode }) {
   const { profile, loading, session } = useAuth()
@@ -121,6 +123,7 @@ function AppRoutes() {
         <Route path="messages" element={<AdminMessagesPage />} />
         <Route path="notifications" element={<TeacherNotifications />} />
         <Route path="settings" element={<AdminSettingsPage />} />
+        <Route path="campus-wall" element={<AdminCampusWallPage />} />
       </Route>
       <Route path="/p/:slug/live" element={<PublicTeacherLivePage />} />
       <Route path="/p/:slug" element={<PublicTeacherSite />} />
@@ -151,6 +154,7 @@ function AppRoutes() {
         <Route path="settings" element={<TeacherSettingsPage />} />
         <Route path="achievements" element={<TeacherAchievementsPage />} />
         <Route path="seminars" element={<TeacherSeminarsPage />} />
+        <Route path="campus-wall" element={<CampusWallMemberPage homeLink="/t" />} />
       </Route>
 
       <Route
@@ -171,6 +175,7 @@ function AppRoutes() {
         <Route path="schedule" element={<StudentSchedulePage />} />
         <Route path="materials" element={<StudentMaterialsPage />} />
         <Route path="account" element={<StudentAccountPage />} />
+        <Route path="campus-wall" element={<Navigate to="/s/posts" replace />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -6,6 +6,14 @@ import { useAuth } from '../../contexts/AuthContext'
 import { loadAdminMessagesOverviewStats, type AdminMessagesOverviewStats } from '../../lib/adminMessagesOverview'
 import { EmptyState } from '../../components/EmptyState'
 import { CreateUniversityModal } from './CreateUniversityModal'
+import { AdminCampusWallOverviewCard } from '../../components/admin-shell/AdminCampusWallOverviewCard'
+import {
+  campusWallTitleFromCollegeCount,
+  fetchAdminCampusWallStats,
+  fetchCampusWallCollegeCount,
+  type CampusWallStats,
+} from '../../lib/campusWall'
+import { supabase } from '../../lib/supabase'
 
 /**
  * لوحة تحكم إدارية: شبكة جامعات — إنشاء جامعة ثم إدارة الكليات من داخل صفحة الجامعة.
@@ -18,12 +26,23 @@ const emptyOverview: AdminMessagesOverviewStats = {
   error: null,
 }
 
+const emptyWallStats: CampusWallStats = {
+  post_count: 0,
+  pending_count: 0,
+  authorized_writer_count: 0,
+  open_report_count: 0,
+}
+
 export function AdminDashboard() {
   const { session } = useAuth()
   const { cards, loading, error, reload } = useAdminUniversitiesDashboard(session?.user?.id)
   const [uniModalOpen, setUniModalOpen] = useState(false)
   const [msgOverview, setMsgOverview] = useState<AdminMessagesOverviewStats>(emptyOverview)
   const [msgLoading, setMsgLoading] = useState(true)
+  const [wallTitle, setWallTitle] = useState<'حائط الجامعة' | 'حائط الكلية'>('حائط الجامعة')
+  const [wallStats, setWallStats] = useState<CampusWallStats | null>(null)
+  const [wallStatsErr, setWallStatsErr] = useState<string | null>(null)
+  const [wallLoading, setWallLoading] = useState(true)
 
   const refreshOverview = useCallback(async () => {
     const uid = session?.user?.id
@@ -38,15 +57,40 @@ export function AdminDashboard() {
     setMsgLoading(false)
   }, [session?.user?.id])
 
+  const refreshWall = useCallback(async () => {
+    const uid = session?.user?.id
+    if (!uid) {
+      setWallStats(null)
+      setWallStatsErr(null)
+      setWallLoading(false)
+      return
+    }
+    setWallLoading(true)
+    setWallStatsErr(null)
+    const n = await fetchCampusWallCollegeCount(supabase)
+    setWallTitle(campusWallTitleFromCollegeCount(n))
+    const { stats, error } = await fetchAdminCampusWallStats(supabase)
+    setWallStats(stats ?? emptyWallStats)
+    setWallStatsErr(error)
+    setWallLoading(false)
+  }, [session?.user?.id])
+
   useEffect(() => {
     void refreshOverview()
   }, [refreshOverview])
 
   useEffect(() => {
+    void refreshWall()
+  }, [refreshWall])
+
+  useEffect(() => {
     if (!session?.user?.id) return
-    const t = window.setInterval(() => void refreshOverview(), 30_000)
+    const t = window.setInterval(() => {
+      void refreshOverview()
+      void refreshWall()
+    }, 30_000)
     return () => window.clearInterval(t)
-  }, [session?.user?.id, refreshOverview])
+  }, [session?.user?.id, refreshOverview, refreshWall])
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
@@ -70,6 +114,14 @@ export function AdminDashboard() {
         stats={msgOverview}
         loading={msgLoading}
         onRefresh={() => void refreshOverview()}
+      />
+
+      <AdminCampusWallOverviewCard
+        wallTitle={wallTitle}
+        stats={wallStats}
+        loading={wallLoading}
+        error={wallStatsErr}
+        onRefresh={() => void refreshWall()}
       />
 
       {error ? (

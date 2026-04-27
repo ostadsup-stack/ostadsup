@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { formatAppDateTime } from '../../lib/appDateTime'
 import type { Post } from '../../types'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
@@ -180,7 +181,7 @@ export function AdminContentPage() {
                       </td>
                       <td data-label="المؤلّف">{authorNames[p.author_id] ?? '…'}</td>
                       <td className="muted small" data-label="التاريخ" title={p.created_at}>
-                        {new Date(p.created_at).toLocaleString('ar-MA', {
+                        {formatAppDateTime(p.created_at, {
                           dateStyle: 'medium',
                           timeStyle: 'short',
                         })}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { formatAppTime } from '../../lib/appDateTime'
 import { fetchWorkspaceForTeacher } from '../../lib/workspace'
 import { fetchTeacherWeekScheduleRows, sameLocalDay, type ScheduleWeekEventRow } from '../../lib/teacherWeekSchedule'
 import { scheduleEventCreatorLabel } from '../../lib/scheduleConflict'
@@ -638,12 +639,12 @@ export function TeacherDashboard() {
                           ) : null}
                           {' — '}
                           {scheduleEventCreatorLabel(ev)} —{' '}
-                          {new Date(ev.starts_at).toLocaleTimeString('ar-MA', {
+                          {formatAppTime(ev.starts_at, {
                             hour: '2-digit',
                             minute: '2-digit',
                           })}{' '}
                           →{' '}
-                          {new Date(ev.ends_at).toLocaleTimeString('ar-MA', {
+                          {formatAppTime(ev.ends_at, {
                             hour: '2-digit',
                             minute: '2-digit',
                           })}{' '}

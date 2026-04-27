@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { AdminActivityItem, AdminActivityType } from '../../lib/adminRecentActivity'
 import { activityTypeLabel } from '../../lib/adminRecentActivity'
+import { formatAppDateTime } from '../../lib/appDateTime'
 import { AdminCard, AdminCardHeader } from './AdminCard'
 
 type AdminActivityFeedProps = {
@@ -65,7 +66,7 @@ export function AdminActivityFeed({ items, loading }: AdminActivityFeedProps) {
                 <span className="admin-activity__detail muted">{it.detail}</span>
               </span>
               <time className="admin-activity__time" dateTime={it.at}>
-                {new Date(it.at).toLocaleString('ar-MA', { dateStyle: 'short', timeStyle: 'short' })}
+                {formatAppDateTime(it.at, { dateStyle: 'short', timeStyle: 'short' })}
               </time>
             </Link>
           </li>

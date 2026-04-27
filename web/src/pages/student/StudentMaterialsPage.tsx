@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { formatAppDateTime } from '../../lib/appDateTime'
 import type { Material } from '../../types'
 import { cohortPageSurfaceStyle, normalizeGroupAccent } from '../../lib/groupTheme'
 import { fetchActiveStudentMemberships, filterStudentRoleRows } from '../../lib/studentGroup'
@@ -179,7 +180,7 @@ export function StudentMaterialsPage() {
                         <span className="muted" aria-hidden="true">
                           {' — '}
                         </span>
-                        <time dateTime={m.created_at}>{new Date(m.created_at).toLocaleString('ar-MA')}</time>
+                        <time dateTime={m.created_at}>{formatAppDateTime(m.created_at)}</time>
                       </p>
                       <h4 className="student-materials__title">{m.title}</h4>
                       {m.description?.trim() ? <p className="muted small">{m.description.trim()}</p> : null}
@@ -220,7 +221,7 @@ export function StudentMaterialsPage() {
                           {' — '}
                         </span>
                         <time dateTime={item.material.created_at}>
-                          {new Date(item.material.created_at).toLocaleString('ar-MA')}
+                          {formatAppDateTime(item.material.created_at)}
                         </time>
                       </p>
                       <h4 className="student-materials__title">{item.material.title}</h4>
@@ -251,7 +252,7 @@ export function StudentMaterialsPage() {
                           {' — '}
                         </span>
                         <time dateTime={item.post.created_at}>
-                          {new Date(item.post.created_at).toLocaleString('ar-MA')}
+                          {formatAppDateTime(item.post.created_at)}
                         </time>
                       </p>
                       {item.post.title?.trim() ? (

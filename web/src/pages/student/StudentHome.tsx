@@ -20,7 +20,7 @@ import {
 import { cohortListLinkAccentStyle, cohortPageSurfaceStyle, normalizeGroupAccent } from '../../lib/groupTheme'
 import { addDays, sameLocalDay, startOfMonday } from '../../lib/teacherWeekSchedule'
 import { scheduleEventCreatorLabel } from '../../lib/scheduleConflict'
-import { studentOnlineJoinUrl } from '../../lib/scheduleMeetingJoin'
+import { formatAppDateTime, formatAppTime } from '../../lib/appDateTime'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { PageHeader } from '../../components/PageHeader'
@@ -168,17 +168,6 @@ export function StudentHome() {
     return candidates[0] ?? null
   }, [scheduleEvents, scheduleBounds.now])
 
-  const nextUpcomingJoinUrl = useMemo(() => {
-    if (!nextUpcomingEvent) return null
-    return studentOnlineJoinUrl({
-      mode: nextUpcomingEvent.mode,
-      meetingProvider: nextUpcomingEvent.meeting_provider,
-      onlineJoinEnabled: nextUpcomingEvent.online_join_enabled,
-      meetingLink: nextUpcomingEvent.meeting_link,
-      workspacePublicSlug: publicSlug,
-    })
-  }, [nextUpcomingEvent, publicSlug])
-
   if (loading) return <Loading />
 
   const hasGroup = Boolean(primaryGroupId)
@@ -235,8 +224,8 @@ export function StudentHome() {
                   <li key={ev.id} className="schedule-list__item">
                     <strong>{ev.subject_name ?? (ev.event_type === 'seminar' ? 'ندوة' : 'حصة')}</strong> —{' '}
                     {scheduleEventCreatorLabel(ev)} —{' '}
-                    {new Date(ev.starts_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })} →{' '}
-                    {new Date(ev.ends_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })}{' '}
+                    {formatAppTime(ev.starts_at, { hour: '2-digit', minute: '2-digit' })} →{' '}
+                    {formatAppTime(ev.ends_at, { hour: '2-digit', minute: '2-digit' })}{' '}
                     <span className="muted">({ev.mode === 'online' ? 'عن بُعد' : 'حضوري'})</span>
                   </li>
                 ))}
@@ -264,7 +253,7 @@ export function StudentHome() {
                       <span className="muted" aria-hidden="true">
                         {' — '}
                       </span>
-                      <time dateTime={p.createdAt}>{new Date(p.createdAt).toLocaleString('ar-MA')}</time>
+                      <time dateTime={p.createdAt}>{formatAppDateTime(p.createdAt)}</time>
                     </p>
                     {p.title ? <h4>{p.title}</h4> : null}
                     <p>{p.content.length > 200 ? `${p.content.slice(0, 200)}…` : p.content}</p>
@@ -295,7 +284,7 @@ export function StudentHome() {
                       <span className="muted" aria-hidden="true">
                         {' — '}
                       </span>
-                      <time dateTime={p.createdAt}>{new Date(p.createdAt).toLocaleString('ar-MA')}</time>
+                      <time dateTime={p.createdAt}>{formatAppDateTime(p.createdAt)}</time>
                     </p>
                     <span className="pill">{p.scope === 'group' ? 'الفوج' : 'عام'}</span>
                     {p.title ? (
@@ -330,7 +319,7 @@ export function StudentHome() {
                       <span className="muted" aria-hidden="true">
                         {' — '}
                       </span>
-                      <time dateTime={p.createdAt}>{new Date(p.createdAt).toLocaleString('ar-MA')}</time>
+                      <time dateTime={p.createdAt}>{formatAppDateTime(p.createdAt)}</time>
                     </p>
                     <span className="pill">{p.scope === 'group' ? 'الفوج' : 'عام'}</span>
                     {p.title ? <h4>{p.title}</h4> : null}
@@ -365,7 +354,7 @@ export function StudentHome() {
                   {coordMessage.body.length > 120 ? `${coordMessage.body.slice(0, 120)}…` : coordMessage.body}
                 </span>
                 <time className="muted small">
-                  {new Date(coordMessage.createdAt).toLocaleString('ar-MA')}
+                  {formatAppDateTime(coordMessage.createdAt)}
                 </time>
               </Link>
             ) : (
@@ -405,7 +394,7 @@ export function StudentHome() {
                       <span className="student-home__preview-snippet">
                         {m.body.length > 100 ? `${m.body.slice(0, 100)}…` : m.body}
                       </span>
-                      <time className="muted small">{new Date(m.createdAt).toLocaleString('ar-MA')}</time>
+                      <time className="muted small">{formatAppDateTime(m.createdAt)}</time>
                     </Link>
                   </li>
                 ))}
@@ -426,7 +415,7 @@ export function StudentHome() {
                   {scheduleEventCreatorLabel(nextUpcomingEvent)}
                 </p>
                 <p className="muted small">
-                  {new Date(nextUpcomingEvent.starts_at).toLocaleString('ar-MA', {
+                  {formatAppDateTime(nextUpcomingEvent.starts_at, {
                     weekday: 'long',
                     day: 'numeric',
                     month: 'long',
@@ -437,11 +426,11 @@ export function StudentHome() {
                   {nextUpcomingEvent.mode === 'online' ? 'عن بُعد' : 'حضوري'}
                   {nextUpcomingEvent.location ? ` — ${nextUpcomingEvent.location}` : ''}
                 </p>
-                {nextUpcomingJoinUrl ? (
+                {nextUpcomingEvent.mode === 'online' && nextUpcomingEvent.meeting_link ? (
                   <p className="student-home__next-slot-link">
                     <a
                       className="btn btn--secondary btn--small"
-                      href={nextUpcomingJoinUrl}
+                      href={nextUpcomingEvent.meeting_link}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -498,7 +487,7 @@ export function StudentHome() {
                   <li key={ev.id} className="schedule-list__item">
                     <strong>{ev.subject_name ?? (ev.event_type === 'seminar' ? 'ندوة' : 'حصة')}</strong> —{' '}
                     {scheduleEventCreatorLabel(ev)} —{' '}
-                    {new Date(ev.starts_at).toLocaleString('ar-MA', {
+                    {formatAppDateTime(ev.starts_at, {
                       weekday: 'short',
                       day: 'numeric',
                       month: 'short',

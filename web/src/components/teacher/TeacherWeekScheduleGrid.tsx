@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Loading } from '../Loading'
 import { EmptyState } from '../EmptyState'
 import { rgbaFromHex } from '../../lib/colorContrast'
+import { formatAppTime } from '../../lib/appDateTime'
 import {
   SCHEDULE_COL_HEIGHT,
   SCHEDULE_DAY_LABELS,
@@ -148,7 +149,7 @@ export function TeacherWeekScheduleGrid({
                           title={p.ev.note ?? undefined}
                         >
                           <span className="schedule-week__event-time">
-                            {new Date(p.ev.starts_at).toLocaleTimeString('ar-MA', {
+                            {formatAppTime(p.ev.starts_at, {
                               hour: '2-digit',
                               minute: '2-digit',
                             })}

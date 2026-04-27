@@ -8,7 +8,7 @@ import {
   IconCalendar,
   IconHome,
   IconInbox,
-  IconLayout,
+  IconLandmark,
   IconLogOut,
 } from '../../components/NavIcons'
 import { ThemeToggle } from '../../components/ThemeToggle'
@@ -134,7 +134,7 @@ export function StudentLayout() {
     }
   }, [menuOpen])
 
-  const { state: liveHeader } = useLiveSessionHeader(profile?.role, session?.user?.id)
+  const { state: liveHeader, reload: reloadLiveHeader } = useLiveSessionHeader('student', session?.user?.id)
 
   const name = profile?.full_name?.trim() || 'طالب'
   const initial = name.charAt(0) || '?'
@@ -311,7 +311,7 @@ export function StudentLayout() {
           </div>
 
           <div className="teacher-shell__actions">
-            <LiveSessionHeaderIndicator state={liveHeader} />
+            <LiveSessionHeaderIndicator state={liveHeader} onLiveSessionUpdated={reloadLiveHeader} />
             <Link
               to="/s/notifications"
               className="btn btn--icon btn--ghost teacher-shell__notif-link"
@@ -349,7 +349,7 @@ export function StudentLayout() {
           <span>الرسائل</span>
         </NavLink>
         <NavLink to="/s/posts" className={bottomNavClass}>
-          <IconLayout className="teacher-bottom-nav__icon" />
+          <IconLandmark className="teacher-bottom-nav__icon" />
           <span>المنشورات</span>
         </NavLink>
         <NavLink to="/s/schedule" className={bottomNavClass}>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { formatAppDateTime } from '../../lib/appDateTime'
 import { markAdminChatReadForPeer } from '../../lib/adminAdminChatRead'
 import type { AdminLayoutOutletContext } from './AdminLayout'
 import type { Profile } from '../../types'
@@ -318,7 +319,7 @@ export function AdminMessagesPage() {
                       >
                         <p className="admin-messages__body">{m.body}</p>
                         <time className="admin-messages__time" dateTime={m.created_at}>
-                          {new Date(m.created_at).toLocaleString('ar-MA', {
+                          {formatAppDateTime(m.created_at, {
                             timeStyle: 'short',
                             dateStyle: 'short',
                           })}

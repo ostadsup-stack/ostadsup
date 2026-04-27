@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { formatAppDateTime } from '../../lib/appDateTime'
 import { cohortPageSurfaceStyle, DEFAULT_GROUP_ACCENT, normalizeGroupAccent } from '../../lib/groupTheme'
 import type { Message, Profile } from '../../types'
 import { Loading } from '../../components/Loading'
@@ -136,7 +137,7 @@ export function TeacherGroupStaffPage() {
                     <span className="muted">{m.message_kind}</span>
                   </div>
                   <p>{m.body}</p>
-                  <time className="muted">{new Date(m.created_at).toLocaleString('ar-MA')}</time>
+                  <time className="muted">{formatAppDateTime(m.created_at)}</time>
                 </div>
               ))}
             </div>

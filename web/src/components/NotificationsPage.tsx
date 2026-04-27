@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
+import { formatAppDateTime } from '../lib/appDateTime'
 import type { NotificationRow } from '../types'
 import { Loading } from './Loading'
 import { ErrorBanner } from './ErrorBanner'
@@ -222,7 +223,7 @@ export function NotificationsPage() {
               >
                 <strong>{n.title}</strong>
                 {n.body ? <p>{n.body}</p> : null}
-                <time className="muted">{new Date(n.created_at).toLocaleString('ar-MA')}</time>
+                <time className="muted">{formatAppDateTime(n.created_at)}</time>
               </button>
               {n.target_type === 'schedule_slot_request' && n.target_id && isTeacherUi ? (
                 (() => {

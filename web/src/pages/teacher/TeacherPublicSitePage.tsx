@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { formatAppDateTime } from '../../lib/appDateTime'
 import { fetchOwnedWorkspaceForTeacher } from '../../lib/workspace'
 import type { AcademicDegree, AcademicProfile, AcademicTextBlock, Post, PublicSiteSettings, Workspace } from '../../types'
 import {
@@ -625,7 +626,7 @@ export function TeacherPublicSitePage() {
                 <div>
                   <strong>{ev.subject_name?.trim() || '—'}</strong>
                   <p className="muted small">
-                    {new Date(ev.starts_at).toLocaleString('ar-MA', { dateStyle: 'medium', timeStyle: 'short' })}
+                    {formatAppDateTime(ev.starts_at, { dateStyle: 'medium', timeStyle: 'short' })}
                   </p>
                 </div>
                 <label className="teacher-public-site__toggle">

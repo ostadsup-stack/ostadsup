@@ -279,49 +279,46 @@ a:hover {
   flex-shrink: 0;
 }
 
-/* مؤشر حصة عن بعد (رأس الأستاذ / الطالب) */
-.teacher-shell__live-block {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.35rem;
-  margin-inline-end: 0.15rem;
-}
-
-.teacher-shell__actions--live {
-  align-items: flex-start;
-}
-
-.teacher-shell__stop-broadcast {
-  font-size: 0.68rem;
-  padding: 0.28rem 0.45rem;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.schedule-online-join-toggle {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 0.5rem;
-}
-
+/* مؤشر الحصة الجارية — عن بعد أو حضوري (رأس الأستاذ / الطالب) */
 .live-session-header-block {
-  display: none;
+  display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 0.35rem;
-  max-width: 11.5rem;
+  max-width: 12.75rem;
   margin-inline-end: 0.2rem;
   padding: 0.35rem 0.45rem;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border);
+  border: 1px solid transparent;
   background: var(--color-surface);
   box-shadow: var(--shadow-sm);
 }
 
+.live-session-header-block--orange {
+  border-color: color-mix(in srgb, #ffa726 62%, white);
+  background: color-mix(in srgb, #ffa726 16%, var(--color-surface));
+}
+
+.live-session-header-block--green {
+  border-color: color-mix(in srgb, #4caf50 58%, white);
+  background: color-mix(in srgb, #4caf50 14%, var(--color-surface));
+}
+
+.live-session-header-block--red {
+  border-color: color-mix(in srgb, #ef5350 60%, white);
+  background: color-mix(in srgb, #ef5350 15%, var(--color-surface));
+}
+
 .live-session-header__status-live {
   margin: 0;
+}
+
+.live-session-header__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  width: 100%;
 }
 
 .live-session-header__status-row {
@@ -335,6 +332,24 @@ a:hover {
   color: var(--color-text);
 }
 
+.live-session-header__mode {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-session-header__meta-line {
+  font-size: 0.66rem;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--color-text-muted);
+  padding-inline-start: calc(8px + 0.35rem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .live-session-header__cta {
   display: inline-flex;
   width: 100%;
@@ -346,42 +361,6 @@ a:hover {
   box-sizing: border-box;
 }
 
-.live-session-header {
-  display: none;
-  align-items: center;
-  gap: 0.35rem;
-  max-width: 10.5rem;
-  padding: 0.2rem 0.45rem;
-  margin-inline-end: 0.15rem;
-  border-radius: var(--radius-sm);
-  text-decoration: none;
-  color: var(--color-text);
-  font-size: 0.72rem;
-  font-weight: 600;
-  line-height: 1.2;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  transition:
-    background 0.12s,
-    border-color 0.12s;
-}
-
-.live-session-header:hover,
-.live-session-header:focus-visible {
-  background: var(--color-surface-hover);
-  outline: none;
-}
-
-@media (min-width: 380px) {
-  .live-session-header-block {
-    display: flex;
-  }
-
-  .live-session-header {
-    display: inline-flex;
-  }
-}
-
 .live-session-dot {
   width: 8px;
   height: 8px;
@@ -391,21 +370,15 @@ a:hover {
 }
 
 .live-session-dot--green {
-  background: #16a34a;
+  background: #4caf50;
 }
 
 .live-session-dot--orange {
-  background: #ea580c;
+  background: #ffa726;
 }
 
 .live-session-dot--red {
-  background: #dc2626;
-}
-
-.live-session-header__label {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  background: #ef5350;
 }
 
 /* صفحة الرابط الثابت للحصة عن بعد */
