@@ -20,6 +20,7 @@ import {
 import { cohortListLinkAccentStyle, cohortPageSurfaceStyle, normalizeGroupAccent } from '../../lib/groupTheme'
 import { addDays, sameLocalDay, startOfMonday } from '../../lib/teacherWeekSchedule'
 import { scheduleEventCreatorLabel } from '../../lib/scheduleConflict'
+import { studentOnlineJoinUrl } from '../../lib/scheduleMeetingJoin'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { PageHeader } from '../../components/PageHeader'
@@ -166,6 +167,17 @@ export function StudentHome() {
       .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime())
     return candidates[0] ?? null
   }, [scheduleEvents, scheduleBounds.now])
+
+  const nextUpcomingJoinUrl = useMemo(() => {
+    if (!nextUpcomingEvent) return null
+    return studentOnlineJoinUrl({
+      mode: nextUpcomingEvent.mode,
+      meetingProvider: nextUpcomingEvent.meeting_provider,
+      onlineJoinEnabled: nextUpcomingEvent.online_join_enabled,
+      meetingLink: nextUpcomingEvent.meeting_link,
+      workspacePublicSlug: publicSlug,
+    })
+  }, [nextUpcomingEvent, publicSlug])
 
   if (loading) return <Loading />
 
@@ -425,11 +437,11 @@ export function StudentHome() {
                   {nextUpcomingEvent.mode === 'online' ? 'عن بُعد' : 'حضوري'}
                   {nextUpcomingEvent.location ? ` — ${nextUpcomingEvent.location}` : ''}
                 </p>
-                {nextUpcomingEvent.mode === 'online' && nextUpcomingEvent.meeting_link ? (
+                {nextUpcomingJoinUrl ? (
                   <p className="student-home__next-slot-link">
                     <a
                       className="btn btn--secondary btn--small"
-                      href={nextUpcomingEvent.meeting_link}
+                      href={nextUpcomingJoinUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                     >

@@ -30,6 +30,8 @@ export type Profile = {
   avatar_url: string | null
   phone?: string | null
   whatsapp?: string | null
+  /** الرقم الجامعي — من «بياناتي» للطالب */
+  university_student_number?: string | null
   bio?: string | null
   office_hours?: string | null
   specialty?: string | null
@@ -233,6 +235,10 @@ export type ScheduleEvent = {
   ends_at: string
   location: string | null
   meeting_link: string | null
+  /** jitsi = غرفة Ostadi؛ google_meet = رابط Meet؛ custom = أي رابط */
+  meeting_provider?: 'jitsi' | 'google_meet' | 'custom' | string | null
+  /** عند false يختفي رابط الدخول للطلاب من المنصة */
+  online_join_enabled?: boolean | null
   note: string | null
   status?: string
   /** موافقة صريحة عند تداخل حصص لنفس الأستاذ بين فوجين (عمود قاعدة البيانات) */
@@ -241,6 +247,8 @@ export type ScheduleEvent = {
   show_on_public_site?: boolean
   /** يُملأ عند select مع join على profiles */
   profiles?: { full_name: string | null } | null
+  /** يُملأ عند select مع workspaces(slug) */
+  workspaces?: { slug: string } | { slug: string }[] | null
 }
 
 export type ScheduleSlotRequestRow = {

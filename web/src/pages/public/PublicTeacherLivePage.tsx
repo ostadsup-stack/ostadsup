@@ -11,12 +11,9 @@ import {
 } from '../../lib/liveSessionHeader'
 import { Loading } from '../../components/Loading'
 import { EmptyState } from '../../components/EmptyState'
+import { jitsiUrlForPublicWorkspaceSlug } from '../../lib/publicLiveLinks'
 
-function jitsiUrlForSlug(slug: string) {
-  const safe = slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
-  if (!safe) return null
-  return `https://meet.jit.si/Ostadi-${safe}`
-}
+const GOOGLE_MEET_NEW_URL = 'https://meet.google.com/new'
 
 export function PublicTeacherLivePage() {
   const { slug } = useParams<{ slug: string }>()
@@ -31,7 +28,7 @@ export function PublicTeacherLivePage() {
   const s = slug?.trim() ?? ''
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
   const livePageUrl = s ? `${origin}/p/${encodeURIComponent(s)}/live` : ''
-  const jitsiUrl = s ? jitsiUrlForSlug(s) : null
+  const jitsiUrl = s ? jitsiUrlForPublicWorkspaceSlug(s) : null
 
   useEffect(() => {
     if (!s) {
@@ -110,6 +107,9 @@ export function PublicTeacherLivePage() {
           status: 'planned',
           event_type: 'class',
           mode: 'online',
+          meeting_link: null,
+          meeting_provider: 'jitsi',
+          online_join_enabled: true,
           workspaces: { slug: s },
         })),
     [schedule, s],
@@ -215,26 +215,52 @@ export function PublicTeacherLivePage() {
           </button>
         </section>
 
-        {jitsiUrl ? (
+        <div className="public-live-page__meet-grid">
+          {jitsiUrl ? (
+            <section className="public-live-page__card">
+              <h2 className="public-live-page__h2">اقتراح غرفة Jitsi Meet</h2>
+              <p className="muted small">
+                غرفة ثابتة مرتبطة بمعرّف مساحتك العامة. يمكنك استخدام رابط آخر (Google Meet أو Zoom وغيره) عبر حقل «رابط
+                الاجتماع» في جدول الحصص.
+              </p>
+              <p className="mono input--ltr public-live-page__url" dir="ltr">
+                {jitsiUrl}
+              </p>
+              <div className="public-live-page__actions">
+                <button type="button" className="btn btn--small" onClick={() => void copyText(jitsiUrl)}>
+                  نسخ رابط Jitsi
+                </button>
+                <a className="btn btn--small btn--primary" href={jitsiUrl} target="_blank" rel="noreferrer noopener">
+                  فتح الغرفة
+                </a>
+              </div>
+            </section>
+          ) : null}
+
           <section className="public-live-page__card">
-            <h2 className="public-live-page__h2">اقتراح غرفة Jitsi Meet</h2>
+            <h2 className="public-live-page__h2">Google Meet</h2>
             <p className="muted small">
-              غرفة ثابتة مرتبطة بمعرّف مساحتك العامة. يمكنك استخدام رابط آخر (Zoom وغيره) عبر حقل «رابط الاجتماع»
-              في جدول الحصص.
+              يفتح Meet لبدء اجتماع فوري (يتطلّب حساب Google). بعد بدء الاجتماع انسخ رابط الدعوة من المتصفح أو من «مشاركة
+              الاجتماع» وأرسله للطلاب، أو الصقه في حقل «رابط الاجتماع» في جدول الحصص.
             </p>
             <p className="mono input--ltr public-live-page__url" dir="ltr">
-              {jitsiUrl}
+              {GOOGLE_MEET_NEW_URL}
             </p>
             <div className="public-live-page__actions">
-              <button type="button" className="btn btn--small" onClick={() => void copyText(jitsiUrl)}>
-                نسخ رابط Jitsi
+              <button type="button" className="btn btn--small" onClick={() => void copyText(GOOGLE_MEET_NEW_URL)}>
+                نسخ الرابط
               </button>
-              <a className="btn btn--small btn--primary" href={jitsiUrl} target="_blank" rel="noreferrer noopener">
-                فتح الغرفة
+              <a
+                className="btn btn--small btn--primary"
+                href={GOOGLE_MEET_NEW_URL}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                فتح Google Meet
               </a>
             </div>
           </section>
-        ) : null}
+        </div>
 
         <p className="muted small">
           <Link to={`/p/${encodeURIComponent(s)}`}>← الصفحة الرسمية للأستاذ</Link>

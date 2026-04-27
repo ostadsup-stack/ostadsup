@@ -9,11 +9,17 @@ import {
   fetchLiveSessionEventsForTeacher,
   type LiveSessionIndicator,
 } from '../lib/liveSessionHeader'
+import { liveSessionPublicPagePath } from '../lib/publicLiveLinks'
+import { resolveOnlineJoinForLiveHeader } from '../lib/scheduleMeetingJoin'
 
 export type LiveSessionHeaderState = {
   indicator: LiveSessionIndicator
-  /** مسار الصفحة العامة للحصة عن بعد */
+  /** مسار صفحة Ostadi العامة */
   livePath: string
+  href: string
+  external: boolean
+  /** للأستاذ فقط عند حصة جارية أو قريبة: لإيقاف إظهار البث للطلاب */
+  activeEventId: string | null
 } | null
 
 const POLL_MS = 60_000
@@ -24,9 +30,22 @@ async function loadTeacherState(client: SupabaseClient, userId: string): Promise
   const rows = await fetchLiveSessionEventsForTeacher(client, workspace.id as string, userId)
   const computed = computeLiveSessionIndicator(Date.now(), rows)
   if (!computed) return null
+  const livePath = liveSessionPublicPagePath(computed.liveSlug)
+  const { href, external } = resolveOnlineJoinForLiveHeader({
+    liveSlug: computed.liveSlug,
+    indicatorKind: computed.indicator.kind,
+    meetingProvider: computed.meetingProvider,
+    onlineJoinEnabled: computed.onlineJoinEnabled,
+    meetingLink: computed.meetingLink,
+  })
+  const activeEventId =
+    computed.indicator.kind === 'green' || computed.indicator.kind === 'orange' ? computed.eventId : null
   return {
     indicator: computed.indicator,
-    livePath: `/p/${encodeURIComponent(computed.liveSlug)}/live`,
+    livePath,
+    href,
+    external,
+    activeEventId,
   }
 }
 
@@ -43,16 +62,35 @@ async function loadStudentState(client: SupabaseClient, userId: string): Promise
   const evRows = await fetchLiveSessionEventsForStudent(client, groupIds)
   const computed = computeLiveSessionIndicator(Date.now(), evRows)
   if (!computed) return null
+  const livePath = liveSessionPublicPagePath(computed.liveSlug)
+  const { href, external } = resolveOnlineJoinForLiveHeader({
+    liveSlug: computed.liveSlug,
+    indicatorKind: computed.indicator.kind,
+    meetingProvider: computed.meetingProvider,
+    onlineJoinEnabled: computed.onlineJoinEnabled,
+    meetingLink: computed.meetingLink,
+  })
   return {
     indicator: computed.indicator,
-    livePath: `/p/${encodeURIComponent(computed.liveSlug)}/live`,
+    livePath,
+    href,
+    external,
+    activeEventId: null,
   }
+}
+
+export type UseLiveSessionHeaderResult = {
+  state: LiveSessionHeaderState
+  reload: () => Promise<void>
 }
 
 /**
  * حالة حصة عن بعد للرأس: يحدّث دورياً من جدول الحصص (حصص أونلاين فقط).
  */
-export function useLiveSessionHeader(role: 'teacher' | 'student' | 'admin' | undefined, userId: string | undefined) {
+export function useLiveSessionHeader(
+  role: 'teacher' | 'student' | 'admin' | undefined,
+  userId: string | undefined,
+): UseLiveSessionHeaderResult {
   const [state, setState] = useState<LiveSessionHeaderState>(null)
 
   const reload = useCallback(async () => {
@@ -82,5 +120,5 @@ export function useLiveSessionHeader(role: 'teacher' | 'student' | 'admin' | und
     }
   }, [reload])
 
-  return state
+  return { state, reload }
 }

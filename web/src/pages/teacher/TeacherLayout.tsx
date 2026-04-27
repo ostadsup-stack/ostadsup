@@ -131,7 +131,24 @@ export function TeacherLayout() {
     }
   }, [menuOpen])
 
-  const liveHeader = useLiveSessionHeader(profile?.role === 'admin' ? 'teacher' : profile?.role, session?.user?.id)
+  const { state: liveHeader, reload: reloadLiveSessionHeader } = useLiveSessionHeader(
+    profile?.role === 'admin' ? 'teacher' : profile?.role,
+    session?.user?.id,
+  )
+  const [stoppingBroadcast, setStoppingBroadcast] = useState(false)
+
+  async function stopBroadcastForStudents() {
+    const evId = liveHeader?.activeEventId
+    if (!evId) return
+    setStoppingBroadcast(true)
+    const { error } = await supabase.from('schedule_events').update({ online_join_enabled: false }).eq('id', evId)
+    setStoppingBroadcast(false)
+    if (error) {
+      console.warn('[Ostadi] stop broadcast', error.message)
+      return
+    }
+    await reloadLiveSessionHeader()
+  }
 
   const name = profile?.full_name?.trim() || 'أستاذ'
   const initial = name.charAt(0) || '?'
@@ -240,8 +257,21 @@ export function TeacherLayout() {
             </div>
           </div>
 
-          <div className="teacher-shell__actions">
-            <LiveSessionHeaderIndicator state={liveHeader} />
+          <div className="teacher-shell__actions teacher-shell__actions--live">
+            <div className="teacher-shell__live-block">
+              <LiveSessionHeaderIndicator state={liveHeader} />
+              {liveHeader?.activeEventId ? (
+                <button
+                  type="button"
+                  className="btn btn--small btn--ghost teacher-shell__stop-broadcast"
+                  disabled={stoppingBroadcast}
+                  title="يخفي زر الدخول عن الطلاب في المنصة (لا يغلق تبويب Meet أو Jitsi تلقائياً)"
+                  onClick={() => void stopBroadcastForStudents()}
+                >
+                  {stoppingBroadcast ? 'جاري…' : 'إيقاف البث للطلاب'}
+                </button>
+              ) : null}
+            </div>
             <Link
               to="/t/notifications"
               className="btn btn--icon btn--ghost teacher-shell__notif-link"

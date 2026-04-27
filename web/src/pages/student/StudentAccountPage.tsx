@@ -12,6 +12,7 @@ const AVATAR_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp'])
 export function StudentAccountPage() {
   const { session, profile, refreshProfile } = useAuth()
   const [fullName, setFullName] = useState('')
+  const [universityStudentNumber, setUniversityStudentNumber] = useState('')
   const [phone, setPhone] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
   const [err, setErr] = useState<string | null>(null)
@@ -21,6 +22,7 @@ export function StudentAccountPage() {
   useEffect(() => {
     if (!profile) return
     setFullName(profile.full_name ?? '')
+    setUniversityStudentNumber(profile.university_student_number ?? '')
     setPhone(profile.phone ?? '')
     setWhatsapp(profile.whatsapp ?? '')
   }, [profile])
@@ -40,6 +42,7 @@ export function StudentAccountPage() {
       .from('profiles')
       .update({
         full_name: name,
+        university_student_number: universityStudentNumber.trim() || null,
         phone: phone.trim() || null,
         whatsapp: whatsapp.trim() || null,
       })
@@ -97,7 +100,7 @@ export function StudentAccountPage() {
       </p>
       <PageHeader
         title="بياناتي"
-        subtitle="تعديل الاسم والهاتف وواتساب الظاهرة للأستاذ والمنسق ومساعدي الفوج ضمن نفس المساحة."
+        subtitle="تعديل الاسم والرقم الجامعي والهاتف وواتساب الظاهرة للأستاذ والمنسق ومساعدي الفوج ضمن نفس المساحة."
       />
       <p className="muted small">
         البريد المعروض لهم هو بريد تسجيل الحساب ولا يُعدّل من هنا.
@@ -132,6 +135,17 @@ export function StudentAccountPage() {
             <label>
               الاسم الكامل
               <input value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+            </label>
+            <label>
+              الرقم الجامعي
+              <input
+                value={universityStudentNumber}
+                onChange={(e) => setUniversityStudentNumber(e.target.value)}
+                dir="ltr"
+                className="input--ltr"
+                placeholder="مثال: 2024123456"
+                autoComplete="off"
+              />
             </label>
             <label>
               البريد الإلكتروني

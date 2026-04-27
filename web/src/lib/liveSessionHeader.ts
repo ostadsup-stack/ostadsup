@@ -16,6 +16,9 @@ export type LiveSessionEventRow = {
   status: string | null
   event_type: string | null
   mode: string
+  meeting_link?: string | null
+  meeting_provider?: string | null
+  online_join_enabled?: boolean | null
   /** PostgREST قد يعيد كائناً أو مصفوفة حسب الإصدار */
   workspaces: { slug: string } | { slug: string }[] | null
 }
@@ -24,7 +27,7 @@ const HOUR_MS = 60 * 60 * 1000
 const RED_WINDOW_MS = 2 * HOUR_MS
 
 const SELECT_EVENTS =
-  'id, workspace_id, group_id, starts_at, ends_at, status, event_type, mode, workspaces(slug)'
+  'id, workspace_id, group_id, starts_at, ends_at, status, event_type, mode, meeting_link, meeting_provider, online_join_enabled, workspaces(slug)'
 
 function windowBounds() {
   const now = Date.now()
@@ -46,13 +49,25 @@ function slugOf(e: LiveSessionEventRow): string | null {
   return s && s.length > 0 ? s : null
 }
 
+function meetingLinkOf(e: LiveSessionEventRow): string | null {
+  const m = e.meeting_link?.trim()
+  return m && m.length > 0 ? m : null
+}
+
 /**
  * حالة مؤشر الحصة عن بعد: أخضر (جارية)، برتقالي (تبدأ خلال أقل من ساعة)، أحمر (انتهت مؤخراً).
  */
 export function computeLiveSessionIndicator(
   nowMs: number,
   rows: LiveSessionEventRow[],
-): { indicator: LiveSessionIndicator; liveSlug: string } | null {
+): {
+  indicator: LiveSessionIndicator
+  liveSlug: string
+  meetingLink: string | null
+  eventId: string
+  meetingProvider: string | null
+  onlineJoinEnabled: boolean
+} | null {
   const list = rows
     .filter(isOnlineClass)
     .map((e) => {
@@ -65,27 +80,44 @@ export function computeLiveSessionIndicator(
 
   const now = nowMs
 
+  function pack(
+    e: LiveSessionEventRow,
+    indicator: LiveSessionIndicator,
+  ): {
+    indicator: LiveSessionIndicator
+    liveSlug: string
+    meetingLink: string | null
+    eventId: string
+    meetingProvider: string | null
+    onlineJoinEnabled: boolean
+  } | null {
+    const slug = slugOf(e)
+    if (!slug) return null
+    return {
+      indicator,
+      liveSlug: slug,
+      meetingLink: meetingLinkOf(e),
+      eventId: e.id,
+      meetingProvider: e.meeting_provider ?? null,
+      onlineJoinEnabled: e.online_join_enabled !== false,
+    }
+  }
+
   const inProgress = list.find((x) => x.start <= now && now < x.end)
   if (inProgress) {
-    const slug = slugOf(inProgress.e)
-    if (!slug) return null
-    return { indicator: { kind: 'green', label: 'بدأت الحصة' }, liveSlug: slug }
+    return pack(inProgress.e, { kind: 'green', label: 'بدأت الحصة' })
   }
 
   const upcomingSoon = list.find((x) => now < x.start && x.start - now <= HOUR_MS)
   if (upcomingSoon) {
-    const slug = slugOf(upcomingSoon.e)
-    if (!slug) return null
-    return { indicator: { kind: 'orange', label: 'بقي أقل من ساعة' }, liveSlug: slug }
+    return pack(upcomingSoon.e, { kind: 'orange', label: 'بقي أقل من ساعة' })
   }
 
   const recentlyEnded = list
     .filter((x) => x.end <= now && now - x.end <= RED_WINDOW_MS)
     .sort((a, b) => b.end - a.end)[0]
   if (recentlyEnded) {
-    const slug = slugOf(recentlyEnded.e)
-    if (!slug) return null
-    return { indicator: { kind: 'red', label: 'انتهت الحصة' }, liveSlug: slug }
+    return pack(recentlyEnded.e, { kind: 'red', label: 'انتهت الحصة' })
   }
 
   return null

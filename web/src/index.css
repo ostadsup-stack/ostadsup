@@ -280,6 +280,72 @@ a:hover {
 }
 
 /* مؤشر حصة عن بعد (رأس الأستاذ / الطالب) */
+.teacher-shell__live-block {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  margin-inline-end: 0.15rem;
+}
+
+.teacher-shell__actions--live {
+  align-items: flex-start;
+}
+
+.teacher-shell__stop-broadcast {
+  font-size: 0.68rem;
+  padding: 0.28rem 0.45rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.schedule-online-join-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.live-session-header-block {
+  display: none;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  max-width: 11.5rem;
+  margin-inline-end: 0.2rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.live-session-header__status-live {
+  margin: 0;
+}
+
+.live-session-header__status-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--color-text);
+}
+
+.live-session-header__cta {
+  display: inline-flex;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  font-weight: 700;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
 .live-session-header {
   display: none;
   align-items: center;
@@ -307,6 +373,10 @@ a:hover {
 }
 
 @media (min-width: 380px) {
+  .live-session-header-block {
+    display: flex;
+  }
+
   .live-session-header {
     display: inline-flex;
   }
@@ -356,6 +426,17 @@ a:hover {
   gap: 0.45rem;
   margin: 0 0 1rem;
   font-weight: 600;
+}
+
+.public-live-page__meet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.public-live-page__meet-grid > .public-live-page__card {
+  margin-bottom: 0;
 }
 
 .public-live-page__card {

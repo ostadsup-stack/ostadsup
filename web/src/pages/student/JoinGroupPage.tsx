@@ -5,7 +5,10 @@ import { supabase } from '../../lib/supabase'
 import { ErrorBanner } from '../../components/ErrorBanner'
 
 function formatJoinError(message: string): string {
-  if (message.includes('student_already_in_another_group')) {
+  if (
+    message.includes('student_already_in_another_group') ||
+    message.includes('group_members_one_active_student')
+  ) {
     return 'أنت مسجّل بالفعل في فوج آخر كطالب. افتح صفحة فوجك واختر «مغادرة الفوج» إن أردت الانضمام إلى فوج جديد.'
   }
   if (message.includes('invalid_join_code')) return 'كود الفوج غير صالح.'

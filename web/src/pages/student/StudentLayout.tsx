@@ -85,8 +85,10 @@ export function StudentLayout() {
       const primaryRow = students[0] ?? coords[0] ?? rows[0]
       const primaryGroupId = primaryRow?.group_id ?? null
       const g = primaryRow?.groups
+      const fromProfile = profile?.university_student_number?.trim()
+      const fromGroup = students[0]?.student_number?.trim()
       setStudentMeta({
-        studentNumber: students[0]?.student_number ?? null,
+        studentNumber: fromProfile || fromGroup || null,
         primaryGroupId,
         showCoordBadge: coords.length > 0,
         groupSummary:
@@ -104,7 +106,7 @@ export function StudentLayout() {
     return () => {
       ok = false
     }
-  }, [session?.user?.id])
+  }, [session?.user?.id, profile?.university_student_number])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -132,7 +134,7 @@ export function StudentLayout() {
     }
   }, [menuOpen])
 
-  const liveHeader = useLiveSessionHeader(profile?.role, session?.user?.id)
+  const { state: liveHeader } = useLiveSessionHeader(profile?.role, session?.user?.id)
 
   const name = profile?.full_name?.trim() || 'طالب'
   const initial = name.charAt(0) || '?'

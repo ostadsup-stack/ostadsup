@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import type { Group, Material, Post, ScheduleEvent } from '../../types'
 import { cohortPageSurfaceStyle, normalizeGroupAccent } from '../../lib/groupTheme'
 import { scheduleEventCreatorLabel } from '../../lib/scheduleConflict'
+import { studentOnlineJoinUrl } from '../../lib/scheduleMeetingJoin'
 import { PeerContactLines } from '../../components/PeerContactLines'
 import { Loading } from '../../components/Loading'
 import { ErrorBanner } from '../../components/ErrorBanner'
@@ -161,7 +162,7 @@ export function StudentGroupPage() {
       supabase.from('materials').select('*').eq('group_id', id).order('created_at', { ascending: false }),
       supabase
         .from('schedule_events')
-        .select('*, profiles:profiles!schedule_events_created_by_fkey(full_name)')
+        .select('*, profiles:profiles!schedule_events_created_by_fkey(full_name), workspaces(slug)')
         .eq('group_id', id)
         .gte('starts_at', scheduleRange.start)
         .lte('starts_at', scheduleRange.end)
@@ -562,14 +563,28 @@ export function StudentGroupPage() {
                 <strong>{ev.subject_name ?? 'حصة'}</strong> — {scheduleEventCreatorLabel(ev)} —{' '}
                 {new Date(ev.starts_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })} —{' '}
                 <span className="muted">{ev.mode === 'online' ? 'عن بُعد' : 'حضوري'}</span>
-                {ev.mode === 'online' && ev.meeting_link ? (
-                  <>
-                    {' '}
-                    <a href={ev.meeting_link} target="_blank" rel="noreferrer">
-                      رابط
-                    </a>
-                  </>
-                ) : null}
+                {ev.mode === 'online'
+                  ? (() => {
+                      const w = ev.workspaces
+                      const slug =
+                        (Array.isArray(w) ? w[0]?.slug : w?.slug)?.trim() || null
+                      const href = studentOnlineJoinUrl({
+                        mode: ev.mode,
+                        meetingProvider: ev.meeting_provider,
+                        onlineJoinEnabled: ev.online_join_enabled,
+                        meetingLink: ev.meeting_link,
+                        workspacePublicSlug: slug,
+                      })
+                      return href ? (
+                        <>
+                          {' '}
+                          <a href={href} target="_blank" rel="noreferrer">
+                            رابط
+                          </a>
+                        </>
+                      ) : null
+                    })()
+                  : null}
                 {ev.location ? <span className="muted"> — {ev.location}</span> : null}
               </li>
             ))}
