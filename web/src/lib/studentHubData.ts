@@ -26,6 +26,18 @@ export type HubPostPerTeacher = {
   scope: 'group' | 'workspace'
 }
 
+/** معاينة منشور واحد من أستاذ (للرئيسية) */
+export type HubTeacherPostBlurb = {
+  postId: string
+  authorId: string
+  authorName: string
+  title: string | null
+  contentPreview: string
+  createdAt: string
+  scope: 'group' | 'workspace'
+  postType: string
+}
+
 /** منشورات حائط الفوج من حسابات المنسقين في نفس الفوج */
 export type HubCoordinatorAnnouncement = {
   id: string
@@ -172,6 +184,7 @@ type PostRow = {
   content: string
   created_at: string
   author_id: string
+  post_type: string
   pinned: boolean
   group_id: string | null
   scope: 'group' | 'workspace'
@@ -187,12 +200,16 @@ export async function fetchStudentHubPosts(
   pinned: HubPostPinned[]
   coordinatorAnnouncements: HubCoordinatorAnnouncement[]
   perTeacher: HubPostPerTeacher[]
+  latestTeacherAnnouncement: HubTeacherPostBlurb | null
+  latestTeacherGeneral: HubTeacherPostBlurb | null
   error: string | null
 }> {
   const [{ data, error }, coordRes] = await Promise.all([
     supabase
       .from('posts')
-      .select('id, title, content, created_at, author_id, pinned, group_id, scope, profiles(full_name, role)')
+      .select(
+        'id, title, content, created_at, author_id, post_type, pinned, group_id, scope, profiles(full_name, role)',
+      )
       .eq('workspace_id', workspaceId)
       .is('deleted_at', null)
       .or(`group_id.eq.${groupId},scope.eq.workspace`)
@@ -207,7 +224,16 @@ export async function fetchStudentHubPosts(
       .eq('status', 'active'),
   ])
 
-  if (error) return { pinned: [], coordinatorAnnouncements: [], perTeacher: [], error: error.message }
+  if (error) {
+    return {
+      pinned: [],
+      coordinatorAnnouncements: [],
+      perTeacher: [],
+      latestTeacherAnnouncement: null,
+      latestTeacherGeneral: null,
+      error: error.message,
+    }
+  }
 
   const coordinatorAuthorIds = new Set(
     coordRes.error
@@ -233,6 +259,7 @@ export async function fetchStudentHubPosts(
       content: r.content,
       created_at: r.created_at,
       author_id: r.author_id,
+      post_type: (r as { post_type?: string }).post_type ?? 'general',
       pinned: r.pinned,
       group_id: r.group_id,
       scope: r.scope,
@@ -289,5 +316,42 @@ export async function fetchStudentHubPosts(
     })
   }
 
-  return { pinned, coordinatorAnnouncements, perTeacher, error: null }
+  const teacherRows = rows
+    .filter((row) => row.profiles?.role === 'teacher')
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+  let latestTeacherAnnouncement: HubTeacherPostBlurb | null = null
+  let latestTeacherGeneral: HubTeacherPostBlurb | null = null
+  for (const row of teacherRows) {
+    const prof = row.profiles
+    if (!prof) continue
+    const text = row.content ?? ''
+    const preview = text.length > 140 ? `${text.slice(0, 140)}…` : text
+    const blurb: HubTeacherPostBlurb = {
+      postId: row.id,
+      authorId: row.author_id,
+      authorName: prof.full_name?.trim() || 'أستاذ',
+      title: row.title,
+      contentPreview: preview,
+      createdAt: row.created_at,
+      scope: row.scope,
+      postType: row.post_type,
+    }
+    if (!latestTeacherAnnouncement && row.post_type === 'announcement') {
+      latestTeacherAnnouncement = blurb
+    }
+    if (!latestTeacherGeneral && row.post_type !== 'announcement') {
+      latestTeacherGeneral = blurb
+    }
+    if (latestTeacherAnnouncement && latestTeacherGeneral) break
+  }
+
+  return {
+    pinned,
+    coordinatorAnnouncements,
+    perTeacher,
+    latestTeacherAnnouncement,
+    latestTeacherGeneral,
+    error: null,
+  }
 }
