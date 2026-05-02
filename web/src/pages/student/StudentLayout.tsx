@@ -352,9 +352,9 @@ export function StudentLayout() {
           <IconLandmark className="teacher-bottom-nav__icon" />
           <span>المنشورات</span>
         </NavLink>
-        <NavLink to="/s/schedule" className={bottomNavClass}>
+        <NavLink to="/s/schedule" className={bottomNavClass} title="جدول الحصص">
           <IconCalendar className="teacher-bottom-nav__icon" />
-          <span>جدول الحصص</span>
+          <span>الجدول</span>
         </NavLink>
         <NavLink to="/s/materials" className={bottomNavClass}>
           <IconBook className="teacher-bottom-nav__icon" />
