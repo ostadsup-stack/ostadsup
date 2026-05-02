@@ -1712,6 +1712,71 @@ button.teacher-home__quick-card {
   padding-bottom: calc(var(--bottom-nav-h) + var(--safe-bottom) + 12px);
 }
 
+/* طالب — جوال: شريط سفلي بخمسة عناصر بعرض متساوٍ دون تمرير أفقي، وهامش محتوى يلائم الارتفاع */
+@media (max-width: 767px) {
+  .layout--student {
+    --bottom-nav-h: 76px;
+  }
+
+  .layout--student .teacher-bottom-nav {
+    overflow-x: hidden;
+    justify-content: stretch;
+  }
+
+  .layout--student .teacher-bottom-nav__link {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0.32rem 0.08rem;
+    gap: 0.1rem;
+    font-size: clamp(0.56rem, 2.6vw, 0.64rem);
+  }
+
+  .layout--student .teacher-bottom-nav__link > span:last-of-type {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    text-align: center;
+    line-height: 1.15;
+    word-break: break-word;
+    max-width: 100%;
+  }
+
+  .layout--student .teacher-bottom-nav__icon {
+    width: 19px;
+    height: 19px;
+  }
+
+  .layout--student .main.main--app.main--student-pad {
+    padding-inline: clamp(0.6rem, 3vw, 1rem);
+    padding-bottom: calc(var(--bottom-nav-h) + var(--safe-bottom) + 14px);
+  }
+
+  .layout--student .teacher-shell__top {
+    gap: 0.5rem;
+    padding-inline: clamp(0.55rem, 2.5vw, 1rem);
+  }
+
+  .layout--student .teacher-shell__identity-name {
+    max-width: min(38vw, 7rem);
+    font-size: 0.8rem;
+  }
+
+  .layout--student .teacher-shell__avatar-wrap {
+    width: 40px;
+    height: 40px;
+  }
+
+  .layout--student .teacher-shell__brand-block {
+    gap: 0.4rem;
+  }
+
+  .layout--student .header__badge {
+    font-size: 0.62rem;
+    padding: 0.12rem 0.38rem;
+  }
+}
+
 @media (min-width: 768px) {
   .main--student-pad {
     padding-bottom: 1.5rem;
