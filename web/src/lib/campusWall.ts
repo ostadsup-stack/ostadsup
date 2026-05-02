@@ -226,6 +226,15 @@ export type CampusWallPostFilters = {
   moderation: CampusWallModerationStatus | 'all' | null
 }
 
+/** فلاتر افتراضية لجلب منشورات حائط الجامعة/الكلية للطالب */
+export const EMPTY_CAMPUS_WALL_FILTERS: CampusWallPostFilters = {
+  collegeId: null,
+  groupId: null,
+  postKind: null,
+  importance: null,
+  moderation: 'all',
+}
+
 export async function fetchCampusWallPosts(
   supabase: SupabaseClient,
   opts: { admin: boolean; filters: CampusWallPostFilters },
@@ -277,6 +286,51 @@ export async function fetchCampusWallPosts(
   })
 
   return { rows, error: null }
+}
+
+export type CampusAdminWallPreview = {
+  id: string
+  title: string | null
+  bodySnippet: string
+  createdAt: string
+  authorName: string | null
+  postKind: CampusWallPostKind
+}
+
+/** أحدث إعلان إداري أو منشور من حساب مدير على حائط الجامعة/الكلية (للطالب). */
+export async function fetchLatestCampusAdminWallPreview(
+  supabase: SupabaseClient,
+): Promise<{ preview: CampusAdminWallPreview | null; error: string | null }> {
+  const { rows, error } = await fetchCampusWallPosts(supabase, {
+    admin: false,
+    filters: EMPTY_CAMPUS_WALL_FILTERS,
+  })
+  if (error) return { preview: null, error }
+  const authorIds = [...new Set(rows.map((r) => r.author_id))].filter(Boolean)
+  const { map: authorMap, error: mapErr } = await fetchProfilesByIds(supabase, authorIds)
+  if (mapErr) return { preview: null, error: mapErr }
+
+  const candidates = rows.filter((p) => {
+    const role = authorMap[p.author_id]?.role
+    return p.post_kind === 'admin_notice' || role === 'admin'
+  })
+  candidates.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  const p = candidates[0]
+  if (!p) return { preview: null, error: null }
+
+  const body = (p.body ?? '').trim()
+  const snippet = body.length > 220 ? `${body.slice(0, 220)}…` : body
+  return {
+    preview: {
+      id: p.id,
+      title: p.title?.trim() ? p.title.trim() : null,
+      bodySnippet: snippet,
+      createdAt: p.created_at,
+      authorName: authorMap[p.author_id]?.full_name?.trim() ?? null,
+      postKind: p.post_kind,
+    },
+    error: null,
+  }
 }
 
 function normalizeOne<T>(v: T | T[] | null | undefined): T | null {
