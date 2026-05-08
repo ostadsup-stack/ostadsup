@@ -15,6 +15,7 @@ import { ThemeToggle } from '../../components/ThemeToggle'
 import { useLiveSessionHeader } from '../../hooks/useLiveSessionHeader'
 import { LiveSessionHeaderIndicator } from '../../components/LiveSessionHeaderIndicator'
 import { fetchActiveStudentMemberships, filterStudentRoleRows, formatStudyLevel } from '../../lib/studentGroup'
+import { StudentIdCard } from '../../components/student/StudentIdCard'
 
 const STUDENT_MENU_ID = 'student-shell-profile-menu'
 
@@ -196,6 +197,19 @@ export function StudentLayout() {
                   role="region"
                   aria-label="حسابي وإعدادات الطالب"
                 >
+                  {session?.user?.id ? (
+                    <div className="student-shell__id-card-wrap">
+                      <StudentIdCard
+                        userId={session.user.id}
+                        fullName={profile?.full_name ?? ''}
+                        studentNumber={studentMeta.studentNumber}
+                        avatarUrl={profile?.avatar_url ?? null}
+                        nameInitial={initial}
+                        groupSummary={studentMeta.groupSummary}
+                        isCoordinator={studentMeta.showCoordBadge}
+                      />
+                    </div>
+                  ) : null}
                   <p className="teacher-shell__menu-heading">حسابي</p>
                   <div className="student-shell__data">
                     <div className="student-shell__data-row">

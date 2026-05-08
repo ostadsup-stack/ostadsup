@@ -8,6 +8,7 @@ import { fetchUnreadFromAppAdminForTeacher } from '../../lib/teacherAppAdminChat
 import { ThemeToggle } from '../../components/ThemeToggle'
 import { useLiveSessionHeader } from '../../hooks/useLiveSessionHeader'
 import { LiveSessionHeaderIndicator } from '../../components/LiveSessionHeaderIndicator'
+import { TeacherIdCard } from '../../components/teacher/TeacherIdCard'
 
 const TEACHER_MENU_ID = 'teacher-shell-nav-menu'
 
@@ -138,6 +139,7 @@ export function TeacherLayout() {
 
   const name = profile?.full_name?.trim() || 'أستاذ'
   const initial = name.charAt(0) || '?'
+  const accountEmail = session?.user?.email ?? ''
 
   const bottomNavClass = ({ isActive }: { isActive: boolean }) =>
     `teacher-bottom-nav__link${isActive ? ' is-active' : ''}`
@@ -187,15 +189,26 @@ export function TeacherLayout() {
               {menuOpen ? (
                 <div
                   id={TEACHER_MENU_ID}
-                  className="teacher-shell__menu"
-                  role="menu"
-                  aria-label="روابط سريعة"
+                  className="teacher-shell__menu teacher-shell__menu--with-id-card"
+                  role="region"
+                  aria-label="بطاقة الأستاذ وروابط سريعة"
                 >
+                  {session?.user?.id ? (
+                    <div className="teacher-shell__id-card-wrap">
+                      <TeacherIdCard
+                        userId={session.user.id}
+                        fullName={profile?.full_name ?? ''}
+                        specialty={profile?.specialty ?? null}
+                        institutionalEmail={accountEmail || null}
+                        avatarUrl={profile?.avatar_url ?? null}
+                        nameInitial={initial}
+                      />
+                    </div>
+                  ) : null}
                   {workspacePublicSlug ? (
                     <>
                       <a
                         ref={firstMenuItemRef}
-                        role="menuitem"
                         href={`/p/${encodeURIComponent(workspacePublicSlug)}`}
                         target="_blank"
                         rel="noreferrer noopener"
@@ -205,7 +218,6 @@ export function TeacherLayout() {
                         الصفحة الرسمية
                       </a>
                       <a
-                        role="menuitem"
                         href={`/p/${encodeURIComponent(workspacePublicSlug)}/live`}
                         target="_blank"
                         rel="noreferrer noopener"
@@ -218,7 +230,6 @@ export function TeacherLayout() {
                   ) : (
                     <Link
                       ref={firstMenuItemRef}
-                      role="menuitem"
                       to="/t/account"
                       className="teacher-shell__menu-link"
                       title="أكمل بيانات مساحتك ليظهر الرابط العام"
@@ -230,7 +241,6 @@ export function TeacherLayout() {
                   {TEACHER_MENU_LINKS.map((item) => (
                     <Link
                       key={item.to}
-                      role="menuitem"
                       to={item.to}
                       className="teacher-shell__menu-link"
                       onClick={() => setMenuOpen(false)}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { ErrorBanner } from './ErrorBanner'
+import { TeacherIdCard } from './teacher/TeacherIdCard'
 import { whatsappHref } from '../lib/whatsapp'
 import type { Profile } from '../types'
 
@@ -170,6 +171,21 @@ export function TeacherAccountForm() {
         بياناتك تظهر في صفحتك العامة عند مشاركة رابط مساحتك؛ البريد مرتبط بحساب الدخول في Supabase.
       </p>
       <ErrorBanner message={err} />
+
+      <div className="teacher-account__id-card-wrap">
+        <h2 className="teacher-account__id-card-heading">بطاقة الأستاذ</h2>
+        <p className="muted small teacher-account__id-card-lead">
+          بطاقة رقمية على نمط بطاقات الهيئة التدريسية في الجامعات؛ رمز QR يحمل معرفاً للتحقق من الحساب (مثلاً من صفحة المدير «التحقق من رمز QR»).
+        </p>
+        <TeacherIdCard
+          userId={session.user.id}
+          fullName={profile.full_name ?? ''}
+          specialty={profile.specialty ?? null}
+          institutionalEmail={email}
+          avatarUrl={profile.avatar_url ?? null}
+          nameInitial={fullName.trim().charAt(0) || '?'}
+        />
+      </div>
 
       <div className="teacher-account__card">
         <div className="teacher-account__avatar-block">

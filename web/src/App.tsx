@@ -51,6 +51,7 @@ import { AdminSettingsPage } from './pages/admin/AdminSettingsPage'
 import { AdminCollegeDetailPage } from './pages/admin/AdminCollegeDetailPage'
 import { AdminUniversityDetailPage } from './pages/admin/AdminUniversityDetailPage'
 import { AdminCampusWallPage } from './pages/admin/AdminCampusWallPage'
+import { AdminQrVerifyPage } from './pages/admin/AdminQrVerifyPage'
 import { CampusWallMemberPage } from './pages/CampusWallMemberPage'
 
 function RequireTeacher({ children }: { children: React.ReactNode }) {
@@ -102,6 +103,7 @@ function AppRoutes() {
       <Route path="/a/invitations" element={<Navigate to="/admin/invitations" replace />} />
       <Route path="/a/posts" element={<Navigate to="/admin/posts" replace />} />
       <Route path="/a/messages" element={<Navigate to="/admin/messages" replace />} />
+      <Route path="/a/qr-verify" element={<Navigate to="/admin/qr-verify" replace />} />
       <Route
         path="/admin"
         element={
@@ -117,6 +119,7 @@ function AppRoutes() {
         <Route path="teachers" element={<AdminTeachersPage />} />
         <Route path="groups" element={<AdminGroupsPage />} />
         <Route path="students" element={<AdminStudentsPage />} />
+        <Route path="qr-verify" element={<AdminQrVerifyPage />} />
         <Route path="content" element={<AdminContentPage />} />
         <Route path="invitations" element={<AdminInvitationsPage />} />
         <Route path="posts" element={<AdminPostsPage />} />

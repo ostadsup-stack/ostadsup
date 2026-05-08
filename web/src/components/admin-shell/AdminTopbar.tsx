@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { ThemeToggle } from '../ThemeToggle'
-import { IconBell, IconSearch } from '../NavIcons'
+import { IconBell, IconQrScan, IconSearch } from '../NavIcons'
 
 type AdminTopbarProps = {
   displayName: string
@@ -35,6 +35,14 @@ export function AdminTopbar({ displayName, sidebarOpen, onMenuClick, unreadNotif
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+        <Link
+          to="/admin/qr-verify"
+          className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+          aria-label="التحقق من رمز QR"
+          title="التحقق من QR"
+        >
+          <IconQrScan className="h-5 w-5" />
+        </Link>
         <button
           type="button"
           className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"

@@ -544,8 +544,302 @@ a:hover {
 }
 
 .teacher-shell__menu--student {
-  min-width: 16.5rem;
-  max-height: min(80vh, 28rem);
+  min-width: 17.5rem;
+  max-width: min(calc(100vw - 2rem), 22rem);
+  max-height: min(85vh, 34rem);
+  padding: 0.65rem 0.75rem;
+}
+
+.student-shell__id-card-wrap {
+  margin: 0 0 0.65rem;
+}
+
+/* بطاقة طالب — أسلوب قريب من بطاقات الجامعات (شريط علوي، وجه فاتح، QR) */
+.student-id-card {
+  --id-card-ink: #0c2d5e;
+  --id-card-face: #f7f9fc;
+  --id-card-border: #b8c8e0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--id-card-border);
+  background: var(--id-card-face);
+  box-shadow: var(--shadow-md);
+  color: #1a2332;
+}
+
+:root[data-theme='dark'] .student-id-card {
+  --id-card-face: #e8edf5;
+  --id-card-border: #8fa3c4;
+  color: #0f1419;
+}
+
+.student-id-card__masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.65rem;
+  background: linear-gradient(105deg, #0c2d5e 0%, #143d7a 55%, #0c4d7a 100%);
+  color: #f8fafc;
+}
+
+.student-id-card__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  line-height: 1.2;
+}
+
+.student-id-card__brand-mark {
+  font-weight: 800;
+  font-size: 0.88rem;
+  letter-spacing: 0.04em;
+}
+
+.student-id-card__brand-sub {
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.88;
+}
+
+.student-id-card__masthead-badge {
+  font-size: 0.52rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  white-space: nowrap;
+}
+
+.student-id-card__body {
+  display: grid;
+  grid-template-columns: 3.15rem 1fr auto;
+  gap: 0.5rem 0.45rem;
+  padding: 0.55rem 0.6rem 0.6rem;
+  align-items: start;
+}
+
+@media (max-width: 360px) {
+  .student-id-card__body {
+    grid-template-columns: 2.85rem 1fr auto;
+    gap: 0.4rem 0.35rem;
+  }
+}
+
+.student-id-card__photo-slot {
+  width: 3.15rem;
+  height: 3.85rem;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(12, 45, 94, 0.2);
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.student-id-card__photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.student-id-card__photo--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--id-card-ink);
+  background: linear-gradient(180deg, #fff 0%, #e8edf5 100%);
+}
+
+.student-id-card__fields {
+  min-width: 0;
+}
+
+.student-id-card__name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin-bottom: 0.3rem;
+}
+
+.student-id-card__name {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--id-card-ink);
+  word-break: break-word;
+}
+
+.student-id-card__pill {
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: rgba(76, 61, 122, 0.12);
+  color: #4c3d7a;
+  border: 1px solid rgba(76, 61, 122, 0.2);
+}
+
+.student-id-card__dl {
+  margin: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.student-id-card__dl-row {
+  display: grid;
+  gap: 0.04rem;
+}
+
+.student-id-card__dl-row dt {
+  margin: 0;
+  font-size: 0.55rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #4a5d78;
+}
+
+.student-id-card__dl-row dd {
+  margin: 0;
+  font-size: 0.64rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #1a2332;
+}
+
+.student-id-card__qr-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  width: 5.4rem;
+  flex-shrink: 0;
+}
+
+.student-id-card__qr-frame {
+  padding: 0.2rem;
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid rgba(12, 45, 94, 0.15);
+  box-shadow: 0 1px 2px rgba(12, 45, 94, 0.08);
+}
+
+.student-id-card__qr-img {
+  display: block;
+  width: 4.6rem;
+  height: 4.6rem;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.student-id-card__qr-placeholder {
+  width: 4.6rem;
+  height: 4.6rem;
+  background: repeating-linear-gradient(
+    -45deg,
+    #e2e8f0,
+    #e2e8f0 4px,
+    #f1f5f9 4px,
+    #f1f5f9 8px
+  );
+  border-radius: 2px;
+}
+
+.student-id-card__qr-hint {
+  margin: 0;
+  font-size: 0.5rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  text-align: center;
+}
+
+.student-id-card__copy {
+  margin: 0;
+  padding: 0.15rem 0.25rem;
+  font: inherit;
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: var(--color-royal, #0c2d5e);
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed currentColor;
+  cursor: pointer;
+  text-align: center;
+  max-width: 100%;
+}
+
+.student-id-card__copy:hover,
+.student-id-card__copy:focus-visible {
+  color: var(--color-royal-mid, #143d7a);
+  outline: none;
+}
+
+/* بطاقة أستاذ — نفس هيكل بطاقة الطالب مع هوية بصرية للهيئة التدريسية */
+.student-id-card.teacher-id-card--faculty {
+  --id-card-ink: #4a1530;
+  --id-card-face: #faf7f9;
+  --id-card-border: #d4b8c8;
+}
+
+:root[data-theme='dark'] .student-id-card.teacher-id-card--faculty {
+  --id-card-face: #f2e8ee;
+  --id-card-border: #a67f95;
+  color: #1a1216;
+}
+
+.student-id-card.teacher-id-card--faculty .student-id-card__masthead {
+  background: linear-gradient(105deg, #4a1530 0%, #6b2245 52%, #5c1f3d 100%);
+}
+
+.student-id-card.teacher-id-card--faculty .student-id-card__photo-slot {
+  border-color: rgba(74, 21, 48, 0.22);
+}
+
+.student-id-card.teacher-id-card--faculty .student-id-card__photo--placeholder {
+  color: var(--id-card-ink);
+  background: linear-gradient(180deg, #fff 0%, #f5e8ef 100%);
+}
+
+.student-id-card.teacher-id-card--faculty .student-id-card__qr-frame {
+  border-color: rgba(74, 21, 48, 0.15);
+  box-shadow: 0 1px 2px rgba(74, 21, 48, 0.08);
+}
+
+.student-id-card.teacher-id-card--faculty .student-id-card__copy {
+  color: #6b2245;
+}
+
+.student-id-card.teacher-id-card--faculty .student-id-card__copy:hover,
+.student-id-card.teacher-id-card--faculty .student-id-card__copy:focus-visible {
+  color: #4a1530;
+}
+
+.teacher-id-card__pill {
+  background: rgba(74, 21, 48, 0.1);
+  color: #4a1530;
+  border-color: rgba(74, 21, 48, 0.22);
+}
+
+.teacher-shell__id-card-wrap {
+  margin: 0 0 0.65rem;
+}
+
+.teacher-shell__menu--with-id-card {
+  min-width: 17.5rem;
+  max-width: min(calc(100vw - 2rem), 22rem);
+  max-height: min(85vh, 38rem);
   padding: 0.65rem 0.75rem;
 }
 
@@ -3984,6 +4278,21 @@ select:focus-visible {
 
 .teacher-account__hint {
   margin-bottom: 0.75rem;
+}
+
+.teacher-account__id-card-wrap {
+  margin-bottom: 1.35rem;
+}
+
+.teacher-account__id-card-heading {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.teacher-account__id-card-lead {
+  margin: 0 0 0.85rem;
 }
 
 .teacher-account__wa-preview {

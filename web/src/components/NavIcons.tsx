@@ -351,6 +351,27 @@ export function IconSearch({ className }: { className?: string }) {
   )
 }
 
+/** مسح رمز QR — إطار زوايا */
+export function IconQrScan({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 7V5a2 2 0 012-2h2M21 7V5a2 2 0 00-2-2h-2M3 17v2a2 2 0 002 2h2M21 17v2a2 2 0 01-2 2h-2" />
+      <rect x="8" y="8" width="8" height="8" rx="1" />
+    </svg>
+  )
+}
+
 export function IconSettings({ className }: { className?: string }) {
   return (
     <svg

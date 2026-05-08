@@ -5,6 +5,7 @@ import {
   IconLayout,
   IconMail,
   IconPosts,
+  IconQrScan,
   IconSettings,
   IconUsers,
 } from '../NavIcons'
@@ -31,6 +32,12 @@ export const ADMIN_SHELL_NAV: AdminShellNavItem[] = [
   { to: '/admin/teachers', label: 'الأساتذة', Icon: IconUsers },
   { to: '/admin/groups', label: 'الأفواج', Icon: IconBook },
   { to: '/admin/students', label: 'الطلبة', Icon: IconGraduation },
+  {
+    to: '/admin/qr-verify',
+    label: 'التحقق من QR',
+    Icon: IconQrScan,
+    activeMatch: (path) => path.startsWith('/admin/qr-verify'),
+  },
   {
     to: '/admin/invitations',
     label: 'الدعوات',

@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom'
 import { AdminCard } from './AdminCard'
-import { IconBook, IconInbox, IconLayout, IconMail, IconPosts } from '../NavIcons'
+import { IconBook, IconInbox, IconLayout, IconMail, IconPosts, IconQrScan } from '../NavIcons'
 
-export type AdminNavIconName = 'book' | 'mail' | 'posts' | 'inbox' | 'layout'
+export type AdminNavIconName = 'book' | 'mail' | 'posts' | 'inbox' | 'layout' | 'qr'
 
 export type AdminNavItem = {
   to: string
@@ -16,6 +16,12 @@ const NAV: AdminNavItem[] = [
   { to: '/admin/invitations', title: 'الدعوات', description: 'إرسال دعوات وعرض السجل', icon: 'mail' },
   { to: '/admin/posts', title: 'المنشورات', description: 'إعلانات على مستوى المساحة', icon: 'posts' },
   { to: '/admin/messages', title: 'الرسائل', description: 'محادثة مع المستخدمين', icon: 'inbox' },
+  {
+    to: '/admin/qr-verify',
+    title: 'التحقق من QR',
+    description: 'مسح بطاقات الهوية الرقمية',
+    icon: 'qr',
+  },
 ]
 
 function IconByName({ name, className }: { name: AdminNavIconName; className?: string }) {
@@ -30,6 +36,8 @@ function IconByName({ name, className }: { name: AdminNavIconName; className?: s
       return <IconPosts className={className} />
     case 'inbox':
       return <IconInbox className={className} />
+    case 'qr':
+      return <IconQrScan className={className} />
     default:
       return <IconLayout className={className} />
   }
